@@ -59,3 +59,25 @@ final class ReadingPosition {
         self.updatedAt = Date()
     }
 }
+
+/// 书签(章内锚点 + 摘录;按书隔离)
+@Model
+final class Bookmark {
+    @Attribute(.unique) var id: String
+    var bookID: String
+    var chapterIndex: Int
+    var anchorOffset: Int
+    var chapterTitle: String
+    var excerpt: String
+    var createdAt: Date
+
+    init(bookID: String, chapterIndex: Int, anchorOffset: Int, chapterTitle: String, excerpt: String) {
+        self.id = "\(bookID)#\(chapterIndex)#\(anchorOffset)"
+        self.bookID = bookID
+        self.chapterIndex = chapterIndex
+        self.anchorOffset = anchorOffset
+        self.chapterTitle = chapterTitle
+        self.excerpt = excerpt
+        self.createdAt = Date()
+    }
+}

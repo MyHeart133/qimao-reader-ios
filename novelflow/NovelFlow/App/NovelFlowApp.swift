@@ -7,7 +7,7 @@ struct NovelFlowApp: App {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [ShelfBook.self, ReadingPosition.self])
+        .modelContainer(for: [ShelfBook.self, ReadingPosition.self, Bookmark.self])
     }
 }
 
@@ -61,11 +61,12 @@ struct AboutView: View {
                 .padding(.vertical, 4)
             }
             Section("当前版本状态") {
-                LabeledContent("版本", value: "0.1.0（P0+P1）")
-                LabeledContent("阅读引擎", value: "章节解析 / 分页 / 锚点恢复 已就绪")
+                LabeledContent("版本", value: "0.2.0（P0–P5）")
+                LabeledContent("阅读引擎", value: "分页 / 滚动双模式 · 锚点恢复")
+                LabeledContent("阅读工具", value: "书签 / 全文搜索 / 点按分区")
                 LabeledContent("本地导入", value: "TXT / EPUB 已接通")
-                LabeledContent("开放书库", value: "Gutenberg 已接入")
-                LabeledContent("下载管理", value: "基础下载可用(P3 完善)")
+                LabeledContent("开放书库", value: "Gutenberg / Open Library / Webnovel")
+                LabeledContent("下载管理", value: "断点续传 / 批量操作 可用")
             }
             Section("来源与许可") {
                 Text("Gutenberg 书源内容为公共领域作品,依据 Project Gutenberg 许可提供下载与离线阅读。本地文件仅在设备上处理。")
@@ -73,7 +74,7 @@ struct AboutView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                Text("本项目按路线图持续推进:书签/全文搜索/下载中心/更多合法书源在后续阶段交付。")
+                Text("书签、全文搜索与滚动阅读已交付;继续打磨阅读细节与更多合法书源。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

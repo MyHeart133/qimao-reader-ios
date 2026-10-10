@@ -12,6 +12,7 @@ final class DownloadManagerTests: XCTestCase {
         var steps: Int = 4
         var stepDelayNanos: UInt64 = 40_000_000
         var failFirst = false
+        var rangeErrorNext = false
         private(set) var downloadCount = 0
 
         func download(
@@ -21,6 +22,10 @@ final class DownloadManagerTests: XCTestCase {
             downloadCount += 1
             if failFirst && downloadCount == 1 {
                 throw DownloadEngineError.http(500)
+            }
+            if rangeErrorNext {
+                rangeErrorNext = false
+                throw DownloadEngineError.rangeNotSatisfiable
             }
 
             var received: Int64 = 0
@@ -245,5 +250,28 @@ final class DownloadManagerTests: XCTestCase {
 
         manager.clearFinished()
         XCTAssertTrue(manager.tasks.isEmpty)
+    }
+
+    func testRangeNotSatisfiableSelfHeals() async throws {
+        let engine = MockEngine()
+        engine.stepDelayNanos = 150_000_000
+        let (manager, spy) = makeManager(engine)
+        let book = makeBook()
+
+        manager.enqueue(book)
+        await waitUntil("进入下载") { manager.task(id: book.id)?.state == .downloading }
+        await waitUntil("字节上报") { (manager.task(id: book.id)?.receivedBytes ?? 0) > 0 }
+        manager.pause(book.id)
+        await waitUntil("暂停落地", timeout: 3) { manager.task(id: book.id)?.state == .paused }
+
+        // 恢复时模拟服务端 416:管理器应清掉残档并自动从头续一次,最终完成
+        engine.stepDelayNanos = 20_000_000
+        engine.rangeErrorNext = true
+        manager.resume(book.id)
+        await waitUntil("自愈后完成", timeout: 8) { manager.task(id: book.id)?.state == .completed }
+
+        XCTAssertEqual(manager.task(id: book.id)?.state, .completed)
+        XCTAssertGreaterThanOrEqual(engine.downloadCount, 3)
+        XCTAssertEqual(spy.count, 1)
     }
 }

@@ -148,7 +148,7 @@ struct DownloadOutcome {
     var serverSupportsRange: Bool
 }
 
-enum DownloadEngineError: LocalizedError {
+enum DownloadEngineError: LocalizedError, Equatable {
     case http(Int)
     case network(String)
     case storage

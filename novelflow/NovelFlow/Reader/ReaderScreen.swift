@@ -16,11 +16,15 @@ final class ReaderModel: ObservableObject {
     @Published var themeIndex = 0
     @Published private(set) var chapterText = ""
     @Published private(set) var pagingMillis: Double = 0
+    @Published var readingMode: ReadingMode = .paged
+    @Published var tapZonePreset: TapZonePreset = .standard
+    @Published private(set) var bookmarks: [Bookmark] = []
+    @Published private(set) var contentToken = 0
 
     private var fullText = ""
     private var bookID = ""
     private var context: ModelContext?
-    private var anchorOffset = 0
+    private(set) var anchorOffset = 0
     private var lastSize: CGSize = .zero
     private var generation = 0
     private var configured = false
@@ -38,8 +42,13 @@ final class ReaderModel: ObservableObject {
     }
 
     var statusLine: String {
-        let page = pages.isEmpty ? 0 : pageIndex + 1
         let ch = chapters.isEmpty ? 0 : chapterIndex + 1
+        if readingMode == .scroll {
+            let length = max(1, (chapterText as NSString).length)
+            let percent = min(100, max(0, Int(Double(anchorOffset) / Double(length) * 100)))
+            return "第\(ch)/\(chapters.count)章 · \(percent)%"
+        }
+        let page = pages.isEmpty ? 0 : pageIndex + 1
         return "第\(ch)/\(chapters.count)章 · \(page)/\(max(pages.count, 1))页"
     }
 
@@ -70,6 +79,8 @@ final class ReaderModel: ObservableObject {
             case .success(let (text, metas)):
                 self.fullText = text
                 self.chapters = metas
+                self.restorePreferences()
+                self.loadBookmarks()
                 self.restoreProgress()
                 if metas.isEmpty {
                     self.errorText = "本书没有可读章节"
@@ -95,22 +106,39 @@ final class ReaderModel: ObservableObject {
         }
     }
 
+    private func restorePreferences() {
+        if let raw = UserDefaults.standard.string(forKey: ReaderPreferenceKeys.readingMode),
+           let mode = ReadingMode(rawValue: raw) {
+            readingMode = mode
+        }
+        if let raw = UserDefaults.standard.string(forKey: ReaderPreferenceKeys.tapZone),
+           let preset = TapZonePreset(rawValue: raw) {
+            tapZonePreset = preset
+        }
+    }
+
     // MARK: 章节切换
 
     func enterChapter(index: Int, keepAnchor: Bool) {
         guard !chapters.isEmpty else { return }
         chapterIndex = max(0, min(index, chapters.count - 1))
+        loadChapterText()
+        if !keepAnchor {
+            anchorOffset = 0
+        }
+        pageIndex = 0
+        contentToken += 1
+        paginate(keepAnchor: keepAnchor)
+        saveProgress()
+    }
+
+    private func loadChapterText() {
+        guard !chapters.isEmpty else { return }
         let meta = chapters[chapterIndex]
         let ns = fullText as NSString
         let loc = min(max(0, meta.location), ns.length)
         let len = min(max(0, meta.length), ns.length - loc)
         chapterText = ns.substring(with: NSRange(location: loc, length: len))
-        if !keepAnchor {
-            anchorOffset = 0
-        }
-        pageIndex = 0
-        paginate(keepAnchor: keepAnchor)
-        saveProgress()
     }
 
     func nextChapter() {
@@ -127,6 +155,119 @@ final class ReaderModel: ObservableObject {
         enterChapter(index: index, keepAnchor: false)
     }
 
+    /// 跳转到章内锚点(书签 / 搜索结果)
+    func jump(toChapter index: Int, anchor: Int) {
+        guard !chapters.isEmpty else { return }
+        chapterIndex = max(0, min(index, chapters.count - 1))
+        loadChapterText()
+        anchorOffset = max(0, anchor)
+        pages = []
+        pageIndex = 0
+        contentToken += 1
+        paginate(keepAnchor: true)
+        saveProgress()
+    }
+
+    func jump(to bookmark: Bookmark) {
+        jump(toChapter: bookmark.chapterIndex, anchor: bookmark.anchorOffset)
+    }
+
+    // MARK: 书签
+
+    func loadBookmarks() {
+        guard let context, !bookID.isEmpty else { return }
+        let bid = bookID
+        let descriptor = FetchDescriptor<Bookmark>(
+            predicate: #Predicate { $0.bookID == bid },
+            sortBy: [SortDescriptor(\.chapterIndex), SortDescriptor(\.anchorOffset)]
+        )
+        bookmarks = (try? context.fetch(descriptor)) ?? []
+    }
+
+    func isCurrentPageBookmarked() -> Bool {
+        bookmarkMatchingCurrentPosition() != nil
+    }
+
+    func toggleBookmark() {
+        guard let context, !chapters.isEmpty, !bookID.isEmpty else { return }
+        if let existing = bookmarkMatchingCurrentPosition() {
+            context.delete(existing)
+            try? context.save()
+            loadBookmarks()
+            return
+        }
+        let anchor = currentBookmarkAnchor
+        let bookmark = Bookmark(
+            bookID: bookID,
+            chapterIndex: chapterIndex,
+            anchorOffset: anchor,
+            chapterTitle: chapterTitle,
+            excerpt: BookSearchEngine.excerpt(from: chapterText, at: anchor)
+        )
+        context.insert(bookmark)
+        try? context.save()
+        loadBookmarks()
+    }
+
+    func removeBookmark(_ bookmark: Bookmark) {
+        guard let context else { return }
+        context.delete(bookmark)
+        try? context.save()
+        loadBookmarks()
+    }
+
+    private var currentBookmarkAnchor: Int {
+        if readingMode == .scroll { return anchorOffset }
+        return currentPage?.location ?? anchorOffset
+    }
+
+    private func bookmarkMatchingCurrentPosition() -> Bookmark? {
+        if readingMode == .scroll {
+            return bookmarks.first {
+                $0.chapterIndex == chapterIndex && abs($0.anchorOffset - anchorOffset) <= 150
+            }
+        }
+        guard let p = currentPage else { return nil }
+        let end = p.location + max(p.length, 1)
+        return bookmarks.first {
+            $0.chapterIndex == chapterIndex && $0.anchorOffset >= p.location && $0.anchorOffset < end
+        }
+    }
+
+    // MARK: 全文搜索
+
+    func search(_ query: String) -> [BookSearchEngine.Match] {
+        BookSearchEngine.search(query: query, fullText: fullText, chapters: chapters)
+    }
+
+    // MARK: 阅读模式 / 点击分区
+
+    func setReadingMode(_ mode: ReadingMode) {
+        guard readingMode != mode else { return }
+        readingMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: ReaderPreferenceKeys.readingMode)
+        if mode == .paged {
+            pages = []
+            pageIndex = 0
+            paginate(keepAnchor: true)
+        } else {
+            saveProgress()
+        }
+    }
+
+    func setTapZonePreset(_ preset: TapZonePreset) {
+        guard tapZonePreset != preset else { return }
+        tapZonePreset = preset
+        UserDefaults.standard.set(preset.rawValue, forKey: ReaderPreferenceKeys.tapZone)
+    }
+
+    /// 滚动模式:位置上报(顶层字符偏移)
+    func updateScrollPosition(_ offset: Int) {
+        guard readingMode == .scroll else { return }
+        anchorOffset = max(0, offset)
+        saveProgress()
+    }
+
     // MARK: 分页
 
     func paginate(size: CGSize? = nil, keepAnchor: Bool) {
@@ -139,7 +280,7 @@ final class ReaderModel: ObservableObject {
         )
         guard contentSize.width > 40, contentSize.height > 40, !chapterText.isEmpty else { return }
 
-        if keepAnchor, let p = currentPage {
+        if keepAnchor, readingMode == .paged, let p = currentPage {
             anchorOffset = p.location
         }
         let captured = anchorOffset
@@ -162,7 +303,7 @@ final class ReaderModel: ObservableObject {
             } else {
                 self.pageIndex = min(self.pageIndex, max(0, outcome.0.pages.count - 1))
             }
-            if let p = self.currentPage {
+            if self.readingMode == .paged, let p = self.currentPage {
                 self.anchorOffset = p.location
             }
         }
@@ -201,7 +342,11 @@ final class ReaderModel: ObservableObject {
 
     // MARK: 进度
 
-    private var progressWithinChapter: Double {
+    var readingProgress: Double {
+        if readingMode == .scroll {
+            let length = max(1, (chapterText as NSString).length)
+            return min(1, max(0, Double(anchorOffset) / Double(length)))
+        }
         guard !pages.isEmpty else { return 0 }
         return Double(pageIndex) / Double(pages.count)
     }
@@ -209,7 +354,7 @@ final class ReaderModel: ObservableObject {
     func saveProgress() {
         guard let context, !bookID.isEmpty, !chapters.isEmpty else { return }
         let bid = bookID
-        let percentage = (Double(chapterIndex) + progressWithinChapter) / Double(chapters.count)
+        let percentage = (Double(chapterIndex) + readingProgress) / Double(chapters.count)
 
         let descriptor = FetchDescriptor<ReadingPosition>(
             predicate: #Predicate { $0.bookID == bid }
@@ -243,9 +388,12 @@ struct ReaderScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @StateObject private var model = ReaderModel()
+    @StateObject private var scrollController = ScrollReaderController()
     @State private var showMenu = false
     @State private var showCatalog = false
     @State private var showSettings = false
+    @State private var showSearch = false
+    @State private var showBookmarks = false
 
     private var theme: ReaderTheme { ReaderTheme.theme(model.themeIndex) }
 
@@ -253,7 +401,9 @@ struct ReaderScreen: View {
         ZStack {
             theme.background.ignoresSafeArea()
             contentLayer
-            tapLayer
+            if model.readingMode == .paged {
+                tapLayer
+            }
             if showMenu {
                 menuOverlay
                     .transition(.opacity)
@@ -267,6 +417,18 @@ struct ReaderScreen: View {
             ChapterListSheet(chapters: model.chapters, current: model.chapterIndex) { idx in
                 showCatalog = false
                 model.jump(toChapter: idx)
+            }
+        }
+        .sheet(isPresented: $showSearch) {
+            SearchSheet(model: model) { chapter, offset in
+                showSearch = false
+                model.jump(toChapter: chapter, anchor: offset)
+            }
+        }
+        .sheet(isPresented: $showBookmarks) {
+            BookmarksSheet(model: model) { bookmark in
+                showBookmarks = false
+                model.jump(to: bookmark)
             }
         }
     }
@@ -286,6 +448,20 @@ struct ReaderScreen: View {
                         Button("返回书架") { dismiss() }
                             .foregroundStyle(NFTheme.accent)
                     }
+                } else if model.readingMode == .scroll {
+                    ScrollReaderView(
+                        text: model.chapterText,
+                        typography: model.typography,
+                        textColor: theme.uiText,
+                        backgroundColor: theme.uiBackground,
+                        startOffset: model.anchorOffset,
+                        token: model.contentToken,
+                        edgeFraction: model.tapZonePreset.edgeFraction,
+                        controller: scrollController,
+                        onTapZone: { handleTapZone($0) },
+                        onPositionChange: { model.updateScrollPosition($0) },
+                        onReachBottom: { model.nextChapter() }
+                    )
                 } else if let page = model.currentPage {
                     ReaderPageView(
                         attributed: PaginationEngine.attributedText(
@@ -320,21 +496,22 @@ struct ReaderScreen: View {
             HStack(spacing: 0) {
                 Color.clear
                     .contentShape(Rectangle())
-                    .frame(width: geo.size.width * 0.28)
-                    .onTapGesture { tapZone(0) }
+                    .frame(width: geo.size.width * model.tapZonePreset.edgeFraction)
+                    .onTapGesture { handleTapZone(0) }
                 Color.clear
                     .contentShape(Rectangle())
-                    .onTapGesture { tapZone(1) }
+                    .onTapGesture { handleTapZone(1) }
                 Color.clear
                     .contentShape(Rectangle())
-                    .frame(width: geo.size.width * 0.28)
-                    .onTapGesture { tapZone(2) }
+                    .frame(width: geo.size.width * model.tapZonePreset.edgeFraction)
+                    .onTapGesture { handleTapZone(2) }
             }
         }
         .ignoresSafeArea()
     }
 
-    private func tapZone(_ zone: Int) {
+    /// 点击分区统一入口:分页模式翻页 / 滚动模式按屏滚动 / 中间呼出菜单
+    private func handleTapZone(_ zone: Int) {
         if showMenu {
             withAnimation {
                 showMenu = false
@@ -342,10 +519,26 @@ struct ReaderScreen: View {
             }
             return
         }
-        switch zone {
-        case 0: model.prevPage()
-        case 2: model.nextPage()
-        default: withAnimation { showMenu = true }
+        let command = model.tapZonePreset.command(for: zone)
+        switch command {
+        case .previousPage:
+            if model.readingMode == .scroll {
+                if !scrollController.scroll(byFraction: -0.85), scrollController.textView != nil {
+                    model.prevChapter()
+                }
+            } else {
+                model.prevPage()
+            }
+        case .nextPage:
+            if model.readingMode == .scroll {
+                if !scrollController.scroll(byFraction: 0.85), scrollController.textView != nil {
+                    model.nextChapter()
+                }
+            } else {
+                model.nextPage()
+            }
+        case .toggleMenu:
+            withAnimation { showMenu = true }
         }
     }
 
@@ -373,13 +566,33 @@ struct ReaderScreen: View {
                         .foregroundStyle(NFTheme.textSecondary)
                 }
                 Spacer()
-                Button {
-                    showCatalog = true
-                } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(NFTheme.textPrimary)
-                        .frame(width: 40, height: 36, alignment: .trailing)
+                HStack(spacing: 2) {
+                    Button {
+                        showMenu = false
+                        showSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(NFTheme.textPrimary)
+                            .frame(width: 36, height: 36)
+                    }
+                    Button {
+                        model.toggleBookmark()
+                    } label: {
+                        Image(systemName: model.isCurrentPageBookmarked() ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(model.isCurrentPageBookmarked() ? NFTheme.accent : NFTheme.textPrimary)
+                            .frame(width: 36, height: 36)
+                    }
+                    Button {
+                        showMenu = false
+                        showCatalog = true
+                    } label: {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(NFTheme.textPrimary)
+                            .frame(width: 36, height: 36, alignment: .trailing)
+                    }
                 }
             }
             .padding(.horizontal, 18)
@@ -400,24 +613,29 @@ struct ReaderScreen: View {
 
     private var bottomBar: some View {
         VStack(spacing: 14) {
-            HStack(spacing: 10) {
-                Text("\(model.pageIndex + 1)")
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(NFTheme.textSecondary)
-                    .frame(width: 30, alignment: .trailing)
-                Slider(
-                    value: Binding(
-                        get: { Double(model.pageIndex + 1) },
-                        set: { model.slideToPage(Int($0) - 1) }
-                    ),
-                    in: 1...Double(max(model.pageCount, 1)),
-                    step: 1
-                )
-                .tint(NFTheme.accent)
-                Text("\(model.pageCount)")
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(NFTheme.textSecondary)
-                    .frame(width: 34, alignment: .leading)
+            if model.readingMode == .paged {
+                HStack(spacing: 10) {
+                    Text("\(model.pageIndex + 1)")
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(NFTheme.textSecondary)
+                        .frame(width: 30, alignment: .trailing)
+                    Slider(
+                        value: Binding(
+                            get: { Double(model.pageIndex + 1) },
+                            set: { model.slideToPage(Int($0) - 1) }
+                        ),
+                        in: 1...Double(max(model.pageCount, 1)),
+                        step: 1
+                    )
+                    .tint(NFTheme.accent)
+                    Text("\(model.pageCount)")
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(NFTheme.textSecondary)
+                        .frame(width: 34, alignment: .leading)
+                }
+            } else {
+                ProgressView(value: model.readingProgress)
+                    .tint(NFTheme.accent)
             }
 
             HStack {
@@ -489,6 +707,40 @@ struct ReaderSettingsPanel: View {
                             .foregroundStyle(NFTheme.textPrimary)
                             .frame(width: 44, height: 32)
                     }
+                }
+
+                HStack {
+                    Text("阅读模式")
+                        .font(.system(size: 13))
+                        .foregroundStyle(NFTheme.textSecondary)
+                    Spacer()
+                    Picker("阅读模式", selection: Binding(
+                        get: { model.readingMode },
+                        set: { model.setReadingMode($0) }
+                    )) {
+                        ForEach(ReadingMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 150)
+                }
+
+                HStack {
+                    Text("点按分区")
+                        .font(.system(size: 13))
+                        .foregroundStyle(NFTheme.textSecondary)
+                    Spacer()
+                    Picker("点按分区", selection: Binding(
+                        get: { model.tapZonePreset },
+                        set: { model.setTapZonePreset($0) }
+                    )) {
+                        ForEach(TapZonePreset.allCases) { preset in
+                            Text(preset.displayName).tag(preset)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 186)
                 }
 
                 HStack {

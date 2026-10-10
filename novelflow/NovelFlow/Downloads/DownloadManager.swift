@@ -245,6 +245,24 @@ final class DownloadManager: ObservableObject {
             // 暂停/取消已由对应操作更新状态;此处仅收尾
         } catch {
             if let j = index(of: id), tasks[j].state == .downloading {
+                // 416 自愈:断点数据失效(服务器端文件变更等),清掉残档后自动从头续一次
+                if let engineError = error as? DownloadEngineError,
+                   engineError == .rangeNotSatisfiable,
+                   tasks[j].receivedBytes > 0 {
+                    removePartial(id)
+                    tasks[j].receivedBytes = 0
+                    tasks[j].totalBytes = -1
+                    tasks[j].etag = nil
+                    tasks[j].speedBytesPerSec = 0
+                    tasks[j].updatedAt = Date()
+                    persist()
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        guard self.task(id: id)?.state == .downloading else { return }
+                        self.start(id: id)
+                    }
+                    return
+                }
                 tasks[j].state = .failed
                 tasks[j].speedBytesPerSec = 0
                 tasks[j].error = error.localizedDescription
