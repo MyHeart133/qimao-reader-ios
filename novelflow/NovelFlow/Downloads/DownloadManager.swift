@@ -67,7 +67,7 @@ final class DownloadManager: ObservableObject {
             case .completed, .queued, .downloading:
                 return
             case .failed, .cancelled, .paused:
-                retry(id: existing.id)
+                retry(existing.id)
                 return
             }
         }
