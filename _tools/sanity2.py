@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""改良版 Swift 粗检:先剥离三引号字符串再查括号平衡。"""
+"""改良版 Swift 粗检:先剥离三引号字符串再查括号平衡。可传目录参数。"""
 import os
 import re
+import sys
 
-ROOT = r"D:\Pro\QiMao\QimaoReader-iOS"
+ROOT = sys.argv[1] if len(sys.argv) > 1 else r"D:\Pro\QiMao\QimaoReader-iOS"
 
 def strip_swift(src: str) -> str:
     # 1) 剥离三引号字符串(含插值一起丢)

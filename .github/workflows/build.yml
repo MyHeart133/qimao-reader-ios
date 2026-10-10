@@ -1,6 +1,10 @@
 name: Build Unsigned IPA
 on:
   push:
+    paths:
+      - "QimaoReader/**"
+      - "project.yml"
+      - ".github/workflows/build.yml"
   workflow_dispatch:
 
 jobs:
