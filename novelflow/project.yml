@@ -1,0 +1,62 @@
+name: NovelFlow
+options:
+  bundleIdPrefix: com.novelflow
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+targets:
+  NovelFlow:
+    type: application
+    platform: iOS
+    sources:
+      - path: NovelFlow
+        excludes:
+          - "Info.plist"
+    info:
+      path: NovelFlow/Info.plist
+      properties:
+        CFBundleDisplayName: NovelFlow
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - arm64
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.novelflow.app
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: false
+  NovelFlowTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NovelFlowTests
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - target: NovelFlow
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.novelflow.tests
+        GENERATE_INFOPLIST_FILE: false
+    info:
+      path: NovelFlowTests/Info.plist
+      properties: {}
+schemes:
+  NovelFlow:
+    build:
+      targets:
+        NovelFlow: all
+        NovelFlowTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - NovelFlowTests
