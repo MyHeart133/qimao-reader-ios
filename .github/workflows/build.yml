@@ -1,0 +1,48 @@
+name: Build Unsigned IPA
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack payload if uploaded as zip
+        run: |
+          if [ -f src.zip ]; then unzip -o -q src.zip; fi
+          echo "--- repo root ---"
+          ls -la
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project QimaoReader.xcodeproj -target QimaoReader \
+            -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CONFIGURATION_BUILD_DIR="$PWD/dist" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r dist/QimaoReader.app Payload/
+          zip -qry QimaoReader-unsigned.ipa Payload
+          ls -la QimaoReader-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: QimaoReader-unsigned-ipa
+          path: QimaoReader-unsigned.ipa
