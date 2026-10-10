@@ -35,7 +35,7 @@ enum PaginationEngine {
         let indent = typography.firstLineIndentChars * font.pointSize
         para.firstLineHeadIndent = indent
         para.headIndent = 0
-        var attrs: [NSAttributedString.Key: Any] = [
+        let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor,
             .paragraphStyle: para,
