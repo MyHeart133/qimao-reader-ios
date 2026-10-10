@@ -81,3 +81,26 @@ jobs:
           name: novelflow-test-results
           path: novelflow/TestResults.xcresult
           if-no-files-found: ignore
+
+      - name: Build Release (device, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project NovelFlow.xcodeproj -scheme NovelFlow \
+            -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CONFIGURATION_BUILD_DIR="$PWD/dist-ipa" \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -r dist-ipa/NovelFlow.app Payload/
+          zip -qry NovelFlow-unsigned.ipa Payload
+          ls -la NovelFlow-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: novelflow-unsigned-ipa
+          path: novelflow/NovelFlow-unsigned.ipa
+          if-no-files-found: error
