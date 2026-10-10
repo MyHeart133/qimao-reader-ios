@@ -11,6 +11,10 @@ struct SourceBookDetailView: View {
         downloadManager.task(id: book.id)
     }
 
+    private var sourceDisplayName: String {
+        SourceRegistry.shared.source(withID: book.sourceID)?.displayName ?? book.sourceID
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -79,9 +83,7 @@ struct SourceBookDetailView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(NFTheme.textSecondary)
                 }
-                Text(book.sourceID == "gutenberg"
-                     ? "来源:Gutenberg 开放书库(公共领域)"
-                     : "来源:\(book.sourceID)")
+                Text("来源:" + sourceDisplayName)
                     .font(.system(size: 12))
                     .foregroundStyle(NFTheme.textSecondary)
                 if let dl = book.downloadCount, dl > 0 {

@@ -38,6 +38,15 @@ final class GutendexSource: ContentSource {
         return Self.mapBook(book)
     }
 
+    /// 中文公版馆藏(按语言浏览;Gutenberg 收录 400+ 本中文经典)
+    func browseChinese(page: Int = 1) async throws -> [SourceBook] {
+        guard let url = URL(string: "\(base)/books?languages=zh&page=\(page)") else {
+            throw SourceError.network("浏览参数无效")
+        }
+        let response: GutendexListResponse = try await fetchJSON(url)
+        return (response.results ?? []).map(Self.mapBook)
+    }
+
     // MARK: - 网络
 
     private func fetchJSON<T: Decodable>(_ url: URL) async throws -> T {

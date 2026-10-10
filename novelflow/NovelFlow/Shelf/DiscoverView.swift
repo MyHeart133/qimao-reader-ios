@@ -86,7 +86,7 @@ struct DiscoverView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 14))
                     .foregroundStyle(NFTheme.textSecondary)
-                TextField("搜索 Gutenberg 开放书库(书名 / 作者)", text: $query)
+                TextField("搜索多来源书库(书名 / 作者)", text: $query)
                     .font(.system(size: 15))
                     .submitLabel(.search)
                     .onSubmit { doSearch() }
@@ -161,11 +161,15 @@ struct DiscoverView: View {
         } else if !searched {
             emptyState
         } else if results.isEmpty {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 Text("未找到相关书籍").font(.system(size: 14)).foregroundStyle(NFTheme.textSecondary)
-                Text("试试英文书名或作者(Gutenberg 以公版书为主)")
+                Text("已检索:Gutenberg / Open Library / Webnovel(阅文官方)")
                     .font(.system(size: 12))
                     .foregroundStyle(NFTheme.textSecondary.opacity(0.8))
+                Button("浏览中文公版馆藏(400+ 本)") { browseChinese() }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(NFTheme.accent)
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 80)
@@ -219,10 +223,35 @@ struct DiscoverView: View {
                     Label("开放书库", systemImage: "globe.asia.australia")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(NFTheme.textPrimary)
-                    Text("接入 Project Gutenberg(7 万+ 本公共领域书籍,允许自由下载与离线阅读)。试试搜索:Pride and Prejudice、Alice、Kafka、唐诗。")
+                    Text("接入三个来源:Project Gutenberg(7 万+ 公版书)、Open Library(全球书目)、Webnovel(阅文官方英译,如 Reverend Insanity)。")
                         .font(.system(size: 13))
                         .foregroundStyle(NFTheme.textSecondary)
                         .lineSpacing(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Color.white)
+                .cornerRadius(12)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("中文公版馆藏", systemImage: "text.book.closed")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(NFTheme.textPrimary)
+                    Text("Gutenberg 收录 400+ 本中文经典(唐诗三百首、红楼梦、水浒传……),全部可下载、可离线阅读。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(NFTheme.textSecondary)
+                        .lineSpacing(3)
+                    Button {
+                        browseChinese()
+                    } label: {
+                        Text("浏览中文馆藏")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background(NFTheme.accent)
+                            .cornerRadius(10)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -261,6 +290,23 @@ struct DiscoverView: View {
             }
         case .failure(let error):
             importNote = "导入失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func browseChinese() {
+        guard !searching else { return }
+        searching = true
+        errorText = nil
+        searched = true
+        Task {
+            do {
+                let books = try await GutendexSource().browseChinese()
+                results = books
+            } catch {
+                errorText = "加载失败：\(error.localizedDescription)"
+                results = []
+            }
+            searching = false
         }
     }
 

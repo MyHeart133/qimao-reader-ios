@@ -8,6 +8,8 @@ final class SourceRegistry {
 
     private init() {
         register(GutendexSource())
+        register(OpenLibrarySource())
+        register(WebnovelSource())
     }
 
     func register(_ source: ContentSource) {
@@ -45,19 +47,24 @@ final class SourceRegistry {
                 collected.append(contentsOf: books)
             }
         }
+        return Self.dedupe(collected)
+    }
 
-        // 去重:同一来源内按 sourceBookID,跨来源按 标题+作者
-        var seenKeys = Set<String>()
-        var seenIDs = Set<String>()
-        var merged: [SourceBook] = []
-        for book in collected {
+    /// 去重:标题+作者相同视为同一作品;优先保留「可下载」版本
+    static func dedupe(_ books: [SourceBook]) -> [SourceBook] {
+        var best: [String: SourceBook] = [:]
+        var order: [String] = []
+        for book in books {
             let key = "\(book.title.lowercased())|\(book.author.lowercased())"
-            if seenIDs.contains(book.id) { continue }
-            if seenKeys.contains(key) { continue }
-            seenIDs.insert(book.id)
-            seenKeys.insert(key)
-            merged.append(book)
+            if let existing = best[key] {
+                if existing.downloadURL == nil && book.downloadURL != nil {
+                    best[key] = book
+                }
+                continue
+            }
+            best[key] = book
+            order.append(key)
         }
-        return merged
+        return order.compactMap { best[$0] }
     }
 }
