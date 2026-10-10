@@ -114,7 +114,7 @@ final class DownloadManagerTests: XCTestCase {
         let book = makeBook()
 
         manager.enqueue(book)
-        await waitUntil("完成", .completed) { manager.task(id: book.id)?.state == .completed }
+        await waitUntil("完成") { manager.task(id: book.id)?.state == .completed }
 
         XCTAssertEqual(manager.task(id: book.id)?.state, .completed)
         XCTAssertEqual(manager.task(id: book.id)?.totalBytes, 4096)
@@ -129,11 +129,11 @@ final class DownloadManagerTests: XCTestCase {
         let book = makeBook()
 
         manager.enqueue(book)
-        await waitUntil("进入下载", .downloading) { manager.task(id: book.id)?.state == .downloading }
+        await waitUntil("进入下载") { manager.task(id: book.id)?.state == .downloading }
         XCTAssertEqual(manager.task(id: book.id)?.state, .downloading)
 
         manager.pause(book.id)
-        await waitUntil("暂停落地", 3) { manager.task(id: book.id)?.state == .paused }
+        await waitUntil("暂停落地", timeout: 3) { manager.task(id: book.id)?.state == .paused }
         XCTAssertEqual(manager.task(id: book.id)?.state, .paused)
 
         engine.stepDelayNanos = 20_000_000
@@ -149,10 +149,10 @@ final class DownloadManagerTests: XCTestCase {
         let book = makeBook()
 
         manager.enqueue(book)
-        await waitUntil("进入下载", .downloading) { manager.task(id: book.id)?.state == .downloading }
+        await waitUntil("进入下载") { manager.task(id: book.id)?.state == .downloading }
 
         manager.cancel(book.id)
-        await waitUntil("取消落地", 3) { manager.task(id: book.id)?.state == .cancelled }
+        await waitUntil("取消落地", timeout: 3) { manager.task(id: book.id)?.state == .cancelled }
         XCTAssertEqual(manager.task(id: book.id)?.state, .cancelled)
 
         engine.stepDelayNanos = 20_000_000
@@ -190,7 +190,7 @@ final class DownloadManagerTests: XCTestCase {
         }
 
         manager.pauseAll()
-        await waitUntil("批量暂停落地", 3) {
+        await waitUntil("批量暂停落地", timeout: 3) {
             manager.task(id: b1.id)?.state == .paused && manager.task(id: b2.id)?.state == .paused
         }
         XCTAssertEqual(manager.activeCount, 0)
@@ -210,7 +210,7 @@ final class DownloadManagerTests: XCTestCase {
         let manager1 = DownloadManager(engine: engine, storageNamespace: ns)
         let book = makeBook()
         manager1.enqueue(book)
-        await waitUntil("进入下载", .downloading) { manager1.task(id: book.id)?.state == .downloading }
+        await waitUntil("进入下载") { manager1.task(id: book.id)?.state == .downloading }
 
         // 模拟应用重启:同存储命名空间的新实例
         let manager2 = DownloadManager(engine: MockEngine(), storageNamespace: ns)
@@ -227,7 +227,7 @@ final class DownloadManagerTests: XCTestCase {
         let book = makeBook()
 
         manager.enqueue(book)
-        await waitUntil("进入下载", .downloading) { manager.task(id: book.id)?.state == .downloading }
+        await waitUntil("进入下载") { manager.task(id: book.id)?.state == .downloading }
         manager.enqueue(book)
         XCTAssertEqual(manager.tasks.filter { $0.id == book.id }.count, 1)
         manager.pauseAll()
