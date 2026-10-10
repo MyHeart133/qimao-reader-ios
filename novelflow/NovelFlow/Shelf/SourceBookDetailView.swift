@@ -4,9 +4,12 @@ import SwiftUI
 struct SourceBookDetailView: View {
     let book: SourceBook
 
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var downloader = BookDownloader.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
+
+    private var task: DownloadTask? {
+        downloadManager.task(id: book.id)
+    }
 
     var body: some View {
         NavigationStack {
@@ -76,7 +79,9 @@ struct SourceBookDetailView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(NFTheme.textSecondary)
                 }
-                Text("来源:Gutenberg 开放书库(公共领域)")
+                Text(book.sourceID == "gutenberg"
+                     ? "来源:Gutenberg 开放书库(公共领域)"
+                     : "来源:\(book.sourceID)")
                     .font(.system(size: 12))
                     .foregroundStyle(NFTheme.textSecondary)
                 if let dl = book.downloadCount, dl > 0 {
@@ -94,36 +99,44 @@ struct SourceBookDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             if book.downloadURL != nil {
                 Button {
-                    downloader.download(book, context: context)
+                    downloadManager.enqueue(book)
                 } label: {
                     HStack {
                         Image(systemName: "arrow.down.circle.fill")
-                        Text("下载并加入书架(\(book.downloadFormat?.uppercased() ?? "TXT"))")
+                        Text(buttonTitle)
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(downloader.isBusy ? Color.gray : NFTheme.accent)
+                    .background(buttonColor)
                     .cornerRadius(12)
                 }
-                .disabled(downloader.isBusy)
+                .disabled(task?.state.isActive == true || task?.state == .completed)
             } else {
                 Text("该来源未提供直接下载地址")
                     .font(.system(size: 13))
                     .foregroundStyle(NFTheme.textSecondary)
             }
 
-            if let job = downloader.job, job.id == book.id {
+            if let t = task {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(job.phase + (job.phase == "完成" ? " ✅ 已加入书架" : ""))
-                        .font(.system(size: 13))
-                        .foregroundStyle(NFTheme.textPrimary)
-                    if !job.isFinished {
-                        ProgressView(value: job.progress)
+                    HStack {
+                        Text(t.state.displayName + (t.state == .completed ? " ✅ 已加入书架" : ""))
+                            .font(.system(size: 13))
+                            .foregroundStyle(NFTheme.textPrimary)
+                        Spacer()
+                        if !t.progressText.isEmpty {
+                            Text(t.progressText)
+                                .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(NFTheme.textSecondary)
+                        }
+                    }
+                    if t.state == .downloading || t.state == .paused {
+                        ProgressView(value: t.progress)
                             .tint(NFTheme.accent)
                     }
-                    if let e = job.error {
+                    if let e = t.error, !e.isEmpty {
                         Text(e).font(.system(size: 12)).foregroundStyle(.red)
                     }
                 }
@@ -142,6 +155,28 @@ struct SourceBookDetailView: View {
                     .foregroundStyle(NFTheme.accent)
                 }
             }
+        }
+    }
+
+    private var buttonTitle: String {
+        guard let t = task else {
+            return "下载并加入书架(\(book.downloadFormat?.uppercased() ?? "TXT"))"
+        }
+        switch t.state {
+        case .downloading: return "下载中…(可在下载中心查看)"
+        case .queued: return "已排队…"
+        case .paused: return "继续下载"
+        case .completed: return "已加入书架"
+        case .failed, .cancelled: return "重试下载"
+        }
+    }
+
+    private var buttonColor: Color {
+        guard let t = task else { return NFTheme.accent }
+        switch t.state {
+        case .completed: return Color.gray
+        case .failed, .cancelled: return NFTheme.accent
+        default: return Color.gray
         }
     }
 

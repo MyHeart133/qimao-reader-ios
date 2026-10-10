@@ -150,6 +150,8 @@ enum EPUBParser {
         s = s.replacingOccurrences(of: "(?is)<script[^>]*>.*?</script>", with: " ", options: .regularExpression)
         s = s.replacingOccurrences(of: "(?is)<style[^>]*>.*?</style>", with: " ", options: .regularExpression)
         s = s.replacingOccurrences(of: "(?is)<head[^>]*>.*?</head>", with: " ", options: .regularExpression)
+        // 章节标题由结构承载(title 字段),正文中剥离 h1/h2 标题内容,避免章节重复识别
+        s = s.replacingOccurrences(of: "(?is)<h[12][^>]*>.*?</h[12]>", with: "\n", options: .regularExpression)
 
         // 只保留 body(存在时)
         if let bodyRange = s.range(of: "(?is)<body[^>]*>(.*?)</body>", options: .regularExpression) {

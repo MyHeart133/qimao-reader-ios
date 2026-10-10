@@ -1,10 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 书库:开放来源搜索(Gutenberg 等)+ 本地导入入口
+/// 书库:开放来源搜索(Gutenberg 等)+ 本地导入 + 下载中心入口
 struct DiscoverView: View {
     @Environment(\.modelContext) private var context
-    @ObservedObject private var downloader = BookDownloader.shared
+    @ObservedObject private var downloadManager = DownloadManager.shared
 
     @State private var query = ""
     @State private var results: [SourceBook] = []
@@ -13,7 +13,19 @@ struct DiscoverView: View {
     @State private var errorText: String?
     @State private var showImporter = false
     @State private var importNote: String?
-    @State private var detailBook: SourceBook?
+    @State private var sheetRoute: SheetRoute?
+
+    private enum SheetRoute: Identifiable {
+        case detail(SourceBook)
+        case downloads
+
+        var id: String {
+            switch self {
+            case .detail(let book): return "detail-\(book.id)"
+            case .downloads: return "downloads"
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,16 +33,41 @@ struct DiscoverView: View {
             if let note = importNote {
                 noteBar(note)
             }
-            if let job = downloader.job {
-                downloadBar(job)
-            }
             content
         }
         .background(NFTheme.background)
         .navigationTitle("书库")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $detailBook) { book in
-            SourceBookDetailView(book: book)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    sheetRoute = .downloads
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 17))
+                        if downloadManager.unfinishedCount > 0 {
+                            Text("\(downloadManager.unfinishedCount)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(NFTheme.accent)
+                                .clipShape(Capsule())
+                                .offset(x: 8, y: -6)
+                        }
+                    }
+                    .foregroundStyle(NFTheme.accent)
+                }
+            }
+        }
+        .sheet(item: $sheetRoute) { route in
+            switch route {
+            case .detail(let book):
+                SourceBookDetailView(book: book)
+            case .downloads:
+                DownloadsView()
+            }
         }
         .fileImporter(
             isPresented: $showImporter,
@@ -101,33 +138,6 @@ struct DiscoverView: View {
         .background(NFTheme.accentSoft)
     }
 
-    private func downloadBar(_ job: DownloadJob) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("《\(job.title)》 \(job.phase)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(NFTheme.textPrimary)
-                    .lineLimit(1)
-                Spacer()
-                if job.isFinished {
-                    Button("清除") { downloader.clearFinished() }
-                        .font(.system(size: 12))
-                        .foregroundStyle(NFTheme.accent)
-                }
-            }
-            if !job.isFinished {
-                ProgressView(value: job.progress)
-                    .tint(NFTheme.accent)
-            }
-            if let e = job.error {
-                Text(e).font(.system(size: 12)).foregroundStyle(.red)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Color.white)
-    }
-
     // MARK: 内容区
 
     @ViewBuilder
@@ -165,7 +175,7 @@ struct DiscoverView: View {
                 LazyVStack(spacing: 10) {
                     ForEach(results) { book in
                         Button {
-                            detailBook = book
+                            sheetRoute = .detail(book)
                         } label: {
                             SourceBookCard(book: book)
                         }
@@ -265,71 +275,5 @@ struct DiscoverView: View {
             results = merged
             searching = false
         }
-    }
-}
-
-/// 书库结果卡片
-struct SourceBookCard: View {
-    let book: SourceBook
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            AsyncImage(url: URL(string: book.cover ?? "")) { phase in
-                if let img = phase.image {
-                    img.resizable().scaledToFill()
-                } else {
-                    ZStack {
-                        NFTheme.accentSoft
-                        Image(systemName: "book.closed.fill").foregroundStyle(NFTheme.accent.opacity(0.5))
-                    }
-                }
-            }
-            .frame(width: 60, height: 84)
-            .clipped()
-            .cornerRadius(6)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(book.title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(NFTheme.textPrimary)
-                    .lineLimit(2)
-                Text(book.author.isEmpty ? "未知作者" : book.author)
-                    .font(.system(size: 13))
-                    .foregroundStyle(NFTheme.textSecondary)
-                    .lineLimit(1)
-                if let s = book.summary, !s.isEmpty {
-                    Text(s)
-                        .font(.system(size: 12))
-                        .foregroundStyle(NFTheme.textSecondary)
-                        .lineLimit(2)
-                }
-                HStack(spacing: 6) {
-                    if let lang = book.language {
-                        chip(lang.uppercased())
-                    }
-                    if let fmt = book.downloadFormat {
-                        chip(fmt.uppercased() + " 可下载")
-                    }
-                    if let dl = book.downloadCount, dl > 0 {
-                        chip("↓\(dl)")
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-    }
-
-    private func chip(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(NFTheme.accent)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(NFTheme.accentSoft)
-            .cornerRadius(4)
     }
 }

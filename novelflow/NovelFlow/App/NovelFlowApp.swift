@@ -12,6 +12,7 @@ struct NovelFlowApp: App {
 }
 
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var tab = 0
 
     var body: some View {
@@ -41,6 +42,9 @@ struct RootView: View {
             .tag(3)
         }
         .tint(NFTheme.accent)
+        .onAppear {
+            DownloadManager.shared.attach(context: modelContext)
+        }
     }
 }
 
