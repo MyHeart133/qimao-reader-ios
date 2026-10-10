@@ -12,17 +12,26 @@ import SwiftUI
 final class DownloadManager: ObservableObject {
     static let shared = DownloadManager()
 
+    /// 入库钩子:默认走 LibraryService(落盘 + SwiftData);测试可注入 no-op 以隔离环境
+    typealias DownloadImportHandler = (ImportedBook, String, String?) async throws -> Void
+
     @Published private(set) var tasks: [DownloadTask] = []
 
     private let engine: DownloadEngineProtocol
     private let storageNamespace: String
+    private let importHandler: DownloadImportHandler?
     private var runners: [String: Task<Void, Never>] = [:]
     private var speedMarks: [String: (date: Date, bytes: Int64)] = [:]
     private var context: ModelContext?
 
-    init(engine: DownloadEngineProtocol = URLSessionDownloadEngine(), storageNamespace: String = "default") {
+    init(
+        engine: DownloadEngineProtocol = URLSessionDownloadEngine(),
+        storageNamespace: String = "default",
+        importHandler: DownloadImportHandler? = nil
+    ) {
         self.engine = engine
         self.storageNamespace = storageNamespace
+        self.importHandler = importHandler
         loadPersisted()
         // 重启语义:不假设任务可自动恢复;未完成任务标记为暂停
         var changed = false
@@ -301,26 +310,39 @@ final class DownloadManager: ObservableObject {
         let summary = tasks[i].summary
 
         do {
-            let imported: ImportedBook = try await Task.detached(priority: .userInitiated) {
-                if format == "epub" {
-                    return try LocalImporter.importEPUB(data: data, name: title + ".epub")
-                } else {
-                    return try LocalImporter.importTXT(data: data, name: title + ".txt")
-                }
-            }.value
+            if let handler = importHandler {
+                // 测试/自定义路径:跳过重型解析与 SwiftData,直接交付字节级校验结果
+                let quick = ImportedBook(
+                    id: UUID().uuidString,
+                    title: title,
+                    author: "",
+                    text: "payload:\(data.count)",
+                    format: format,
+                    originalFileName: title + "." + format
+                )
+                try await handler(quick, sourceID, summary)
+            } else {
+                // 生产路径:后台解析 → 落盘 → SwiftData 入库
+                let parsed: ImportedBook = try await Task.detached(priority: .userInitiated) {
+                    if format == "epub" {
+                        return try LocalImporter.importEPUB(data: data, name: title + ".epub")
+                    } else {
+                        return try LocalImporter.importTXT(data: data, name: title + ".txt")
+                    }
+                }.value
 
-            // 3) 入库
-            guard let ctx = context else {
-                throw ImportError.decodeFailed
+                var merged = parsed
+                if merged.title.isEmpty || merged.title.count < 2 {
+                    merged.title = title
+                }
+                guard let ctx = context else {
+                    throw ImportError.decodeFailed
+                }
+                let book = try LibraryService.addImported(merged, sourceID: sourceID, context: ctx)
+                book.intro = summary ?? ""
+                book.contentSignature = "bytes:\(outcome.receivedBytes)"
+                try? ctx.save()
             }
-            var merged = imported
-            if merged.title.isEmpty || merged.title.count < 2 {
-                merged.title = title
-            }
-            let book = try LibraryService.addImported(merged, sourceID: sourceID, context: ctx)
-            book.intro = summary ?? ""
-            book.contentSignature = "bytes:\(outcome.receivedBytes)"
-            try? ctx.save()
 
             // 4) 更新任务
             if let j = index(of: id) {

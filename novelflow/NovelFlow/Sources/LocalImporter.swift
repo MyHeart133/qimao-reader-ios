@@ -121,7 +121,7 @@ enum LocalImporter {
     // MARK: - 编码探测
 
     static func decodeText(_ data: Data) throws -> String {
-        var bytes = data
+        let bytes = data
 
         // 1. UTF-8 BOM
         if bytes.count >= 3, bytes.prefix(3) == Data([0xEF, 0xBB, 0xBF]) {
