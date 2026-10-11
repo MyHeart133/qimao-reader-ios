@@ -9,8 +9,13 @@ struct SourceBookDetailView: View {
     let book: SourceBook
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @ObservedObject private var downloadManager = DownloadManager.shared
     @ObservedObject private var cacheManager = ChapterCacheManager.shared
+
+    @State private var onlinePreparing = false
+    @State private var readerBook: ShelfBook?
+    @State private var onlineNote: String?
 
     private var task: DownloadTask? {
         downloadManager.task(id: book.id)
@@ -33,6 +38,9 @@ struct SourceBookDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    if let note = onlineNote {
+                        noteBar(note)
+                    }
                     if let s = book.summary, !s.isEmpty {
                         section("简介") {
                             Text(s)
@@ -61,6 +69,9 @@ struct SourceBookDetailView: View {
                         .foregroundStyle(NFTheme.accent)
                 }
             }
+        }
+        .fullScreenCover(item: $readerBook) { shelf in
+            ReaderScreen(shelfBook: shelf)
         }
     }
 
@@ -191,6 +202,22 @@ struct SourceBookDetailView: View {
         let st = cacheManager.state(for: book)
 
         VStack(alignment: .leading, spacing: 10) {
+            Button {
+                startOnlineReading()
+            } label: {
+                HStack {
+                    Image(systemName: "book.fill")
+                    Text(onlinePreparing ? "正在准备目录…" : "开始阅读(在线)")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(onlinePreparing ? Color.gray : NFTheme.accent)
+                .cornerRadius(12)
+            }
+            .disabled(onlinePreparing)
+
             if let st {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -239,21 +266,68 @@ struct SourceBookDetailView: View {
                     cacheManager.enqueue(book)
                 } label: {
                     HStack {
-                        Image(systemName: "arrow.down.circle.fill")
+                        Image(systemName: "arrow.down.circle")
                         Text("缓存全本并加入书架")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .medium))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(NFTheme.accent)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(NFTheme.accent)
-                    .cornerRadius(12)
+                    .padding(.vertical, 11)
+                    .background(NFTheme.accentSoft)
+                    .cornerRadius(10)
                 }
-                Text("逐章抓取并缓存到本机,可离线阅读;大长篇需要几分钟,支持暂停与续传。")
+                Text("在线读:点开即读,边读边缓存;缓存全本:整本落盘,离线可读。")
                     .font(.system(size: 12))
                     .foregroundStyle(NFTheme.textSecondary)
             }
         }
+    }
+
+    // MARK: 在线阅读
+
+    private func startOnlineReading() {
+        guard !onlinePreparing else { return }
+        onlinePreparing = true
+        onlineNote = nil
+        Task {
+            do {
+                guard let source else { throw SourceError.unsupported("书源未注册") }
+                let chapters = try await source.fetchChapterList(book.sourceBookID)
+                guard !chapters.isEmpty else { throw SourceError.notFound }
+                let meta = OnlineBookMeta(
+                    sourceID: book.sourceID,
+                    sourceBookID: book.sourceBookID,
+                    title: book.title,
+                    author: book.author,
+                    chapters: chapters.map { OnlineChapterRef(id: $0.id, title: $0.title) },
+                    updatedAt: Date()
+                )
+                let shelf = try LibraryService.ensureOnlineShelfBook(book: book, meta: meta, context: context)
+                onlinePreparing = false
+                readerBook = shelf
+            } catch {
+                onlinePreparing = false
+                onlineNote = "打开失败:\(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func noteBar(_ note: String) -> some View {
+        HStack {
+            Text(note)
+                .font(.system(size: 13))
+                .foregroundStyle(NFTheme.textPrimary)
+            Spacer()
+            Button {
+                onlineNote = nil
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 12)).foregroundStyle(NFTheme.textSecondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(NFTheme.accentSoft)
+        .cornerRadius(8)
     }
 
     private func smallButton(_ title: String, _ icon: String, _ action: @escaping () -> Void) -> some View {

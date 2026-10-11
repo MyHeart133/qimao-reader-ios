@@ -20,8 +20,8 @@ targets:
       path: NovelFlow/Info.plist
       properties:
         CFBundleDisplayName: NovelFlow
-        CFBundleShortVersionString: "0.4.0"
-        CFBundleVersion: "4"
+        CFBundleShortVersionString: "0.5.0"
+        CFBundleVersion: "5"
         UILaunchScreen: {}
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

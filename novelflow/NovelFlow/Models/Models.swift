@@ -7,9 +7,11 @@ final class ShelfBook {
     @Attribute(.unique) var id: String
     var title: String
     var author: String
-    /// 来源标识:"local-import" / "gutenberg" / ...(书源阶段扩展)
+    /// 来源标识:"local-import" / "gutenberg" / "qimao" / ...
     var sourceID: String
-    /// 本地相对路径(App 沙盒内)
+    /// 来源站内书籍标识(在线书必备;整本缓存后仍保留)
+    var sourceBookID: String?
+    /// 本地相对路径(App 沙盒内);nil = 在线书籍(边读边缓存)
     var localPath: String?
     var coverPath: String?
     var intro: String
@@ -18,11 +20,15 @@ final class ShelfBook {
     /// 内容标识:用于阅读锚点失效检测(内容变化后旧锚点不适用)
     var contentSignature: String?
 
+    /// 在线书:有来源标识、无本地全文
+    var isOnline: Bool { localPath == nil && sourceBookID != nil }
+
     init(
         id: String,
         title: String,
         author: String = "",
         sourceID: String,
+        sourceBookID: String? = nil,
         localPath: String? = nil,
         coverPath: String? = nil,
         intro: String = "",
@@ -32,6 +38,7 @@ final class ShelfBook {
         self.title = title
         self.author = author
         self.sourceID = sourceID
+        self.sourceBookID = sourceBookID
         self.localPath = localPath
         self.coverPath = coverPath
         self.intro = intro

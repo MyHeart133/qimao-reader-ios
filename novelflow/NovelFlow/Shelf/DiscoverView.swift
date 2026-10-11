@@ -16,6 +16,8 @@ struct DiscoverView: View {
     @State private var sheetRoute: SheetRoute?
     @State private var showLinkPrompt = false
     @State private var linkInput = ""
+    @State private var searchProgress = ""
+    @State private var searchTask: Task<Void, Never>?
 
     private enum SheetRoute: Identifiable {
         case detail(SourceBook)
@@ -164,10 +166,16 @@ struct DiscoverView: View {
 
     @ViewBuilder
     private var content: some View {
-        if searching {
-            Spacer()
-            ProgressView("搜索中…")
-            Spacer()
+        if searching && results.isEmpty {
+            VStack(spacing: 8) {
+                ProgressView("搜索中…")
+                Text(searchProgress.isEmpty
+                     ? "多源并发检索,先到先显示"
+                     : "已检索 \(searchProgress) 个来源,先到先显示")
+                    .font(.system(size: 12))
+                    .foregroundStyle(NFTheme.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let e = errorText {
             VStack(spacing: 10) {
                 Image(systemName: "antenna.radiowaves.left.and.right.slash")
@@ -203,6 +211,16 @@ struct DiscoverView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    if searching {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("还在搜索其它来源…(\(searchProgress))")
+                                .font(.system(size: 12))
+                                .foregroundStyle(NFTheme.textSecondary)
+                            Spacer()
+                        }
+                        .padding(.bottom, 2)
+                    }
                     ForEach(results) { book in
                         Button {
                             sheetRoute = .detail(book)
@@ -350,6 +368,7 @@ struct DiscoverView: View {
     private func browseChinese() {
         guard !searching else { return }
         searching = true
+        searchProgress = ""
         errorText = nil
         searched = true
         Task {
@@ -367,6 +386,7 @@ struct DiscoverView: View {
     private func browseFanqieRank() {
         guard !searching else { return }
         searching = true
+        searchProgress = ""
         errorText = nil
         searched = true
         Task {
@@ -391,6 +411,7 @@ struct DiscoverView: View {
         }
         guard !searching else { return }
         searching = true
+        searchProgress = ""
         errorText = nil
         searched = true
         Task {
@@ -417,13 +438,24 @@ struct DiscoverView: View {
 
     private func doSearch() {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty, !searching else { return }
+        guard !q.isEmpty else { return }
+        searchTask?.cancel()
         searching = true
         errorText = nil
         searched = true
-        Task {
-            let merged = await SourceRegistry.shared.searchAll(q)
-            results = merged
+        results = []
+        let total = SourceRegistry.shared.searchableSources.count
+        searchProgress = "0/\(total)"
+        searchTask = Task {
+            var collected: [SourceBook] = []
+            var done = 0
+            for await batch in SourceRegistry.shared.searchStream(q) {
+                if Task.isCancelled { return }
+                done += 1
+                collected.append(contentsOf: batch.books)
+                results = SourceRegistry.dedupe(collected)
+                searchProgress = "\(done)/\(total)"
+            }
             searching = false
         }
     }

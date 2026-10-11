@@ -30,6 +30,48 @@ enum LibraryService {
         return book
     }
 
+    /// 在线书籍入架:目录落盘 + 书架记录(不下载全文,边读边缓存)
+    ///
+    /// 书架 ID 固定为 `sourceID:sourceBookID`(stableID),
+    /// 之后整本缓存完成时按同一 ID 升级为离线书,不产生重复条目。
+    @discardableResult
+    static func ensureOnlineShelfBook(
+        book: SourceBook,
+        meta: OnlineBookMeta,
+        context: ModelContext
+    ) throws -> ShelfBook {
+        let id = book.stableID
+        try OnlineChapterStore.shared.saveMeta(meta, bookID: id)
+
+        if let existing = shelfBook(id: id, context: context) {
+            existing.title = book.title
+            existing.author = book.author
+            if existing.intro.isEmpty {
+                existing.intro = book.summary ?? ""
+            }
+            try? context.save()
+            return existing
+        }
+
+        let shelf = ShelfBook(
+            id: id,
+            title: book.title,
+            author: book.author,
+            sourceID: book.sourceID,
+            sourceBookID: book.sourceBookID,
+            localPath: nil,
+            intro: book.summary ?? ""
+        )
+        context.insert(shelf)
+        try context.save()
+        return shelf
+    }
+
+    static func shelfBook(id: String, context: ModelContext) -> ShelfBook? {
+        let descriptor = FetchDescriptor<ShelfBook>(predicate: #Predicate { $0.id == id })
+        return (try? context.fetch(descriptor))?.first
+    }
+
     /// 从书架移除(保留本地文件;若文件被其它记录引用则不受影响)
     static func removeFromShelf(_ book: ShelfBook, context: ModelContext) {
         context.delete(book)
@@ -50,6 +92,6 @@ enum LibraryService {
             }
         }
         try? context.save()
-        try? BookContentStore.shared.delete(bookID: bookID)
+        try? BookContentStore.shared.delete(bookID: bookID)   // 目录整删(含在线缓存)
     }
 }

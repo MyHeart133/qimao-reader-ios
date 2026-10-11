@@ -74,6 +74,44 @@ enum BookSearchEngine {
         return result
     }
 
+    /// 逐章文本检索(在线阅读模式:只搜已缓存的章节)
+    /// - Parameter chapters: (chapterIndex, title, text) 列表
+    static func search(
+        query: String,
+        chapters: [(index: Int, title: String, text: String)],
+        limit: Int = 200
+    ) -> [Match] {
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty, limit > 0 else { return [] }
+        var matches: [Match] = []
+        for chapter in chapters {
+            guard matches.count < limit else { break }
+            let ns = chapter.text as NSString
+            var searchStart = 0
+            while matches.count < limit, searchStart < ns.length {
+                let found = ns.range(
+                    of: keyword,
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: NSRange(location: searchStart, length: ns.length - searchStart)
+                )
+                guard found.location != NSNotFound, found.length > 0 else { break }
+                matches.append(
+                    Match(
+                        id: "\(chapter.index)-\(found.location)",
+                        chapterIndex: chapter.index,
+                        chapterTitle: chapter.title,
+                        chapterOffset: found.location,
+                        snippet: snippet(ns: ns, match: found)
+                    )
+                )
+                let next = found.location + max(found.length, 1)
+                if next <= searchStart { break }
+                searchStart = next
+            }
+        }
+        return matches
+    }
+
     /// 命中上下文:前后各取一段,折叠空白,首尾按需加省略号
     static func snippet(ns: NSString, match: NSRange, context: Int = 24) -> String {
         let start = max(0, match.location - context)

@@ -1,11 +1,12 @@
 import SwiftData
 import SwiftUI
 
-/// 书架:真实书籍列表(导入 / 下载后的书都在这里)
+/// 书架:真实书籍列表(导入 / 下载 / 在线书都在这里)
 struct ShelfView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \ShelfBook.addedAt, order: .reverse) private var books: [ShelfBook]
     @State private var opened: ShelfBook?
+    @State private var toast: String?
 
     var body: some View {
         Group {
@@ -13,7 +14,7 @@ struct ShelfView: View {
                 ContentUnavailableView {
                     Label("书架空空如也", systemImage: "books.vertical")
                 } description: {
-                    Text("去「书库」搜索开放书库,或导入本地的 TXT / EPUB 文件。")
+                    Text("去「书库」搜索全网书源,或导入本地的 TXT / EPUB 文件。")
                 }
             } else {
                 List {
@@ -24,6 +25,20 @@ struct ShelfView: View {
                             ShelfRow(book: book)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            if book.isOnline {
+                                Button {
+                                    cacheFull(book)
+                                } label: {
+                                    Label("缓存全本(离线可读)", systemImage: "arrow.down.circle")
+                                }
+                            }
+                            Button(role: .destructive) {
+                                LibraryService.deleteCompletely(book, context: context)
+                            } label: {
+                                Label("彻底删除", systemImage: "trash")
+                            }
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button("彻底删除", role: .destructive) {
                                 LibraryService.deleteCompletely(book, context: context)
@@ -41,9 +56,48 @@ struct ShelfView: View {
         .background(NFTheme.background)
         .navigationTitle("书架")
         .navigationBarTitleDisplayMode(.inline)
+        .overlay(alignment: .top) {
+            if let toast {
+                Text(toast)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.black.opacity(0.78))
+                    .cornerRadius(10)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            withAnimation { self.toast = nil }
+                        }
+                    }
+            }
+        }
         .fullScreenCover(item: $opened) { book in
             ReaderScreen(shelfBook: book)
         }
+    }
+
+    /// 在线书 → 整本缓存(离线可读)
+    private func cacheFull(_ book: ShelfBook) {
+        guard let sourceBookID = book.sourceBookID else { return }
+        let sourceBook = SourceBook(
+            sourceID: book.sourceID,
+            sourceBookID: sourceBookID,
+            title: book.title,
+            author: book.author,
+            cover: nil,
+            language: "zh",
+            summary: book.intro.isEmpty ? nil : book.intro,
+            subjects: [],
+            downloadCount: nil,
+            downloadURL: nil,
+            downloadFormat: nil,
+            externalURL: nil
+        )
+        ChapterCacheManager.shared.enqueue(sourceBook)
+        toast = "已开始缓存《\(book.title)》"
     }
 }
 
@@ -78,6 +132,15 @@ struct ShelfRow: View {
                         .padding(.vertical, 2)
                         .background(NFTheme.accentSoft)
                         .cornerRadius(4)
+                    if book.isOnline {
+                        Text("在线")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.85))
+                            .cornerRadius(4)
+                    }
                     if let last = book.lastReadAt {
                         Text("最近阅读 " + Self.formatter.string(from: last))
                             .font(.system(size: 11))

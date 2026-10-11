@@ -313,32 +313,44 @@ final class ChapterCacheManager: ObservableObject {
         let intro = Self.introText(meta: meta, written: written)
         var updated = meta
 
-        if let existingID = meta.progress.importedBookID, Self.shelfBook(id: existingID, context: ctx) != nil {
-            // 已有书架记录 → 覆盖内容(补齐/更新)
-            let textToSave = text
-            try await Task.detached(priority: .userInitiated) { () throws -> Void in
-                _ = try BookContentStore.shared.save(text: textToSave, bookID: existingID)
-            }.value
-            if let book = Self.shelfBook(id: existingID, context: ctx) {
-                book.intro = intro
-                book.contentSignature = "chapters:\(written)"
-            }
-            try? ctx.save()
+        // 目标书架记录:优先按 stableID(在线书直接升级),其次沿用历史记录
+        let targetBookID: String
+        if Self.shelfBook(id: id, context: ctx) != nil {
+            targetBookID = id
+        } else if let oldID = meta.progress.importedBookID, Self.shelfBook(id: oldID, context: ctx) != nil {
+            targetBookID = oldID
         } else {
-            let imported = ImportedBook(
-                id: UUID().uuidString,
-                title: meta.title,
-                author: meta.author,
-                text: text,
-                format: "txt",
-                originalFileName: meta.title + ".txt"
-            )
-            let book = try LibraryService.addImported(imported, sourceID: meta.sourceID, context: ctx)
+            targetBookID = id
+        }
+
+        let textToSave = text
+        try await Task.detached(priority: .userInitiated) { () throws -> Void in
+            _ = try BookContentStore.shared.save(text: textToSave, bookID: targetBookID)
+        }.value
+
+        if let book = Self.shelfBook(id: targetBookID, context: ctx) {
+            // 已有记录(在线书升级 / 重新缓存)→ 补全本地路径与简介
+            book.localPath = "Books/\(BookContentStore.safeComponent(targetBookID))/content.txt"
             book.intro = intro
             book.contentSignature = "chapters:\(written)"
-            try? ctx.save()
-            updated.progress.importedBookID = book.id
+        } else {
+            let book = ShelfBook(
+                id: targetBookID,
+                title: meta.title,
+                author: meta.author,
+                sourceID: meta.sourceID,
+                sourceBookID: meta.sourceBookID,
+                localPath: "Books/\(BookContentStore.safeComponent(targetBookID))/content.txt",
+                intro: intro,
+                contentSignature: "chapters:\(written)"
+            )
+            ctx.insert(book)
         }
+        try? ctx.save()
+        updated.progress.importedBookID = targetBookID
+
+        // 全文已落盘 → 在线分章缓存不再需要
+        OnlineChapterStore.shared.deleteAll(bookID: targetBookID)
 
         updated.progress.state = .completed
         updated.progress.done = written
