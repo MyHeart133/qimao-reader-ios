@@ -6,9 +6,9 @@ struct ReaderTypography: Equatable, Codable {
     var fontName: String = "PingFangSC-Regular"
     var fontSize: CGFloat = 19
     /// 行距(像素增量)
-    var lineSpacing: CGFloat = 9
+    var lineSpacing: CGFloat = 7
     /// 段间距
-    var paragraphSpacing: CGFloat = 16
+    var paragraphSpacing: CGFloat = 10
     /// 首行缩进(字符数)
     var firstLineIndentChars: CGFloat = 2
     /// 左右页边距
@@ -48,8 +48,8 @@ struct ReaderTypography: Equatable, Codable {
     static let compactPreset: ReaderTypography = {
         var t = ReaderTypography()
         t.fontSize = 17
-        t.lineSpacing = 7
-        t.paragraphSpacing = 12
+        t.lineSpacing = 4
+        t.paragraphSpacing = 4
         t.horizontalMargin = 18
         t.verticalMargin = 20
         return t
@@ -58,8 +58,8 @@ struct ReaderTypography: Equatable, Codable {
     static let relaxedPreset: ReaderTypography = {
         var t = ReaderTypography()
         t.fontSize = 21
-        t.lineSpacing = 12
-        t.paragraphSpacing = 20
+        t.lineSpacing = 11
+        t.paragraphSpacing = 18
         t.horizontalMargin = 26
         t.verticalMargin = 28
         return t

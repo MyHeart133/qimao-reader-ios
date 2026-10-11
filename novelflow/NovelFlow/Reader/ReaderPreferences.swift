@@ -4,6 +4,7 @@ import SwiftUI
 enum ReaderPreferenceKeys {
     static let readingMode = "nf.reader.readingMode"
     static let tapZone = "nf.reader.tapZone"
+    static let typography = "nf.reader.typography"
 }
 
 /// 翻页方式:分页 / 连续滚动

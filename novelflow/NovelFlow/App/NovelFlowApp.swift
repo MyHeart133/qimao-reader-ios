@@ -56,11 +56,11 @@ struct AboutView: View {
                 .padding(.vertical, 4)
             }
             Section("当前版本状态") {
-                LabeledContent("版本", value: "0.5.0(P7.5:在线阅读)")
+                LabeledContent("版本", value: "0.6.0(P8:和图书)")
                 LabeledContent("阅读引擎", value: "分页 / 滚动双模式 · 锚点恢复")
-                LabeledContent("在线阅读", value: "边读边缓存 · 免整本等待")
-                LabeledContent("排版", value: "书内实时调:字号/字体/行距/段距/缩进/边距")
-                LabeledContent("书源", value: "七猫 / 起点 / 番茄 + 聚合镜像 ×5")
+                LabeledContent("在线阅读", value: "边读边缓存 · 章节名随文显示")
+                LabeledContent("排版", value: "书内实时调 · 设置全局记忆")
+                LabeledContent("书源", value: "七猫 / 起点 / 番茄 / 和图书 + 聚合镜像 ×5")
                 LabeledContent("整本缓存", value: "逐章抓取 / 断点续传 / 离线阅读")
             }
             Section("来源与许可") {

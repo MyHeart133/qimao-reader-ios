@@ -26,6 +26,7 @@ final class SourceRegistry {
         }
         register(PiaotiaSource())
         register(Biquge365Source())
+        register(HetushuSource())
         register(GutendexSource())
         register(OpenLibrarySource())
         register(WebnovelSource())

@@ -178,11 +178,62 @@ final class MirrorSourceTests: XCTestCase {
         XCTAssertEqual(Biquge365Source.parseChapter("<html><body>无正文</body></html>"), "")
     }
 
+    // MARK: - 和图书
+
+    func testHetushuSearchParsing() {
+        let html = """
+        <dl class="list" id="body"><dt>共搜索到4本作品<span>(关键词：蛊真人)</span></dt>
+        <dd><a href="/book/7640/index.html"><img src="/book/cover.pic/cover_7640.jpg" /></a><div class="state continue"></div><h4 style=""><a href="/book/7640/index.html">蛊真人</a><span>/ 蛊真人 /</span></h4><div class="intro"><p>人是万物之灵，蛊是天地真精。</p><p>三观不正，魔头重生。</p></div><div><a href="/book/7640/index.html" class="button">免费阅读</a></div></dd>
+        </dl>
+        """
+        let books = HetushuSource.parseSearch(html)
+        XCTAssertEqual(books.count, 1)
+        XCTAssertEqual(books[0].sourceBookID, "7640")
+        XCTAssertEqual(books[0].title, "蛊真人")
+        XCTAssertEqual(books[0].author, "蛊真人")
+        XCTAssertEqual(books[0].cover, "https://www.hetushu.com/book/cover.pic/cover_7640.jpg")
+        XCTAssertTrue(books[0].summary?.contains("万物之灵") == true)
+        XCTAssertEqual(books[0].externalURL, "https://www.hetushu.com/book/7640/index.html")
+    }
+
+    func testHetushuCatalogParsing() {
+        let html = """
+        <a href="/book/7640/5345239.html">序 不是走向成功，就是走向毁灭</a>
+        <a href="/book/7640/5345240.html">第一章 纵身亡魔心仍不悔</a>
+        <a href="/book/7640/5345240.html">第一章 纵身亡魔心仍不悔</a>
+        <a href="/book/9999/1111111.html">别的书</a>
+        """
+        let chapters = HetushuSource.parseCatalog(html, bookID: "7640")
+        XCTAssertEqual(chapters.count, 2, "去重且只保留本书章节")
+        XCTAssertEqual(chapters[0].id, "5345239")
+        XCTAssertEqual(chapters[0].title, "序 不是走向成功，就是走向毁灭")
+        XCTAssertEqual(chapters[1].index, 2)
+    }
+
+    func testHetushuChapterParsing() {
+        let html = """
+        <div id="content" style="font-size:20px;line-height:2;">
+        <div class="mask mask2"></div><h2 class="h2">序 不是走向成功，就是走向毁灭</h2>
+        <div>于是就想着，想要看到一个真正的大反派。</div>
+        <div>以上是本书的序，也是声明。</div>
+        <div>书签</div><div>&nbsp;</div>
+        </div>
+        <script type="text/javascript" src="/command/section.js"></script>
+        """
+        let text = HetushuSource.parseChapter(html)
+        XCTAssertEqual(text, "于是就想着，想要看到一个真正的大反派。\n以上是本书的序，也是声明。")
+        XCTAssertFalse(text.contains("书签"))
+    }
+
+    func testHetushuChapterMissingContent() {
+        XCTAssertEqual(HetushuSource.parseChapter("<html><body>无正文</body></html>"), "")
+    }
+
     // MARK: - 注册表
 
     func testRegistryContainsMirrors() {
         let ids = Set(SourceRegistry.shared.sources.map(\.identifier))
-        for expected in ["qimao", "fanqie", "qidian", "202xs", "ffzw", "xinbiqu", "piaotia", "biquge365"] {
+        for expected in ["qimao", "fanqie", "qidian", "202xs", "ffzw", "xinbiqu", "piaotia", "biquge365", "hetushu"] {
             XCTAssertTrue(ids.contains(expected), "缺少书源:\(expected)")
         }
     }

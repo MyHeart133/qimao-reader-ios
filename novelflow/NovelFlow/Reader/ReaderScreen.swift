@@ -12,7 +12,9 @@ final class ReaderModel: ObservableObject {
     @Published var pageIndex = 0
     @Published var loading = true
     @Published var errorText: String?
-    @Published var typography = ReaderTypography()
+    @Published var typography = ReaderTypography() {
+        didSet { persistTypography() }
+    }
     @Published var themeIndex = 0
     @Published private(set) var chapterText = ""
     @Published private(set) var pagingMillis: Double = 0
@@ -38,6 +40,8 @@ final class ReaderModel: ObservableObject {
     private var onlineFetchGeneration = 0
     private var restoreAnchorOnLoad = false
     private var pendingPaginate: Task<Void, Never>?
+    /// 本地书搜索的章节文本缓存(与显示文本一致)
+    private var searchTextCache: [Int: String] = [:]
 
     var isOnlineBook: Bool { onlineMeta != nil }
 
@@ -74,6 +78,7 @@ final class ReaderModel: ObservableObject {
         configured = true
         self.bookID = bookID
         self.context = context
+        self.searchTextCache = [:]
         loading = true
 
         // 在线书籍:本地全文不存在但存在在线目录 → 在线模式(边读边缓存)
@@ -147,6 +152,16 @@ final class ReaderModel: ObservableObject {
            let preset = TapZonePreset(rawValue: raw) {
             tapZonePreset = preset
         }
+        if let data = UserDefaults.standard.data(forKey: ReaderPreferenceKeys.typography),
+           let saved = try? JSONDecoder().decode(ReaderTypography.self, from: data) {
+            typography = saved
+        }
+    }
+
+    private func persistTypography() {
+        if let data = try? JSONEncoder().encode(typography) {
+            UserDefaults.standard.set(data, forKey: ReaderPreferenceKeys.typography)
+        }
     }
 
     // MARK: 章节切换
@@ -169,28 +184,55 @@ final class ReaderModel: ObservableObject {
         saveProgress()
     }
 
+    // MARK: 章节文本组装
+
+    /// 规范化章节文本:去掉空行(空行会撑出无法调节的"段距")
+    nonisolated static func normalizedChapterText(_ text: String) -> String {
+        guard text.contains("\n") else { return text }
+        let lines = text.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 在线章节显示文本:章节名 + 正文(与本地书的章节标题行格式一致)
+    nonisolated static func composeChapterText(title: String, body: String) -> String {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBody = normalizedChapterText(body)
+        if cleanTitle.isEmpty { return cleanBody }
+        return cleanTitle + "\n" + cleanBody
+    }
+
+    /// 组装第 index 章的显示文本(本地:切片 + 规范化;在线:缓存正文 + 标题)
+    private func composedChapterText(at index: Int) -> String? {
+        guard index >= 0, index < chapters.count else { return nil }
+        if onlineMeta != nil {
+            guard let body = OnlineChapterStore.shared.chapterText(bookID: bookID, index: index) else { return nil }
+            return Self.composeChapterText(title: chapters[index].title, body: body)
+        }
+        let meta = chapters[index]
+        let ns = fullText as NSString
+        let loc = min(max(0, meta.location), ns.length)
+        let len = min(max(0, meta.length), ns.length - loc)
+        return Self.normalizedChapterText(ns.substring(with: NSRange(location: loc, length: len)))
+    }
+
     private func loadChapterText() {
         guard !chapters.isEmpty else { return }
         // 在线模式:命中缓存即读,否则异步抓取
         if let onlineMeta {
-            let index = chapterIndex
-            if let cached = OnlineChapterStore.shared.chapterText(bookID: bookID, index: index) {
-                chapterText = cached
+            if let composed = composedChapterText(at: chapterIndex) {
+                chapterText = composed
                 chapterLoading = false
                 chapterLoadError = nil
             } else {
                 chapterText = ""
                 chapterLoading = true
                 chapterLoadError = nil
-                fetchOnlineChapter(index: index, meta: onlineMeta)
+                fetchOnlineChapter(index: chapterIndex, meta: onlineMeta)
             }
             return
         }
-        let meta = chapters[chapterIndex]
-        let ns = fullText as NSString
-        let loc = min(max(0, meta.location), ns.length)
-        let len = min(max(0, meta.length), ns.length - loc)
-        chapterText = ns.substring(with: NSRange(location: loc, length: len))
+        chapterText = composedChapterText(at: chapterIndex) ?? ""
     }
 
     // MARK: 在线章节抓取
@@ -211,7 +253,7 @@ final class ReaderModel: ObservableObject {
                 guard let self, gen == self.onlineFetchGeneration else { return }
                 OnlineChapterStore.shared.saveChapter(bookID: bookID, index: index, text: text)
                 guard self.chapterIndex == index else { return }
-                self.chapterText = text
+                self.chapterText = Self.composeChapterText(title: self.chapters[index].title, body: text)
                 self.chapterLoading = false
                 self.contentToken += 1
                 self.paginate(keepAnchor: self.restoreAnchorOnLoad)
@@ -357,17 +399,25 @@ final class ReaderModel: ObservableObject {
     // MARK: 全文搜索
 
     func search(_ query: String) -> [BookSearchEngine.Match] {
-        // 在线模式:检索已缓存的章节(边读边搜)
-        if onlineMeta != nil {
-            var payload: [(index: Int, title: String, text: String)] = []
-            for (i, ch) in chapters.enumerated() {
-                if let text = OnlineChapterStore.shared.chapterText(bookID: bookID, index: i) {
-                    payload.append((i, ch.title, text))
-                }
+        // 统一按「章节显示文本」检索:与阅读/跳转锚点使用同一份文本,偏移必然一致
+        var payload: [(index: Int, title: String, text: String)] = []
+        for (i, ch) in chapters.enumerated() {
+            let text: String
+            if onlineMeta != nil {
+                // 在线模式:仅检索已缓存章节(边读边搜)
+                guard let composed = composedChapterText(at: i) else { continue }
+                text = composed
+            } else if let cached = searchTextCache[i] {
+                text = cached
+            } else {
+                let composed = composedChapterText(at: i) ?? ""
+                searchTextCache[i] = composed
+                text = composed
             }
-            return BookSearchEngine.search(query: query, chapters: payload)
+            guard !text.isEmpty else { continue }
+            payload.append((i, ch.title, text))
         }
-        return BookSearchEngine.search(query: query, fullText: fullText, chapters: chapters)
+        return BookSearchEngine.search(query: query, chapters: payload)
     }
 
     // MARK: 阅读模式 / 点击分区
@@ -890,11 +940,11 @@ struct ReaderSettingsPanel: View {
                 typographySlider("行距", value: Binding(
                     get: { model.typography.lineSpacing },
                     set: { model.typography.lineSpacing = $0; model.schedulePaginate() }
-                ), range: 2...20)
+                ), range: 0...20)
                 typographySlider("段距", value: Binding(
                     get: { model.typography.paragraphSpacing },
                     set: { model.typography.paragraphSpacing = $0; model.schedulePaginate() }
-                ), range: 0...30)
+                ), range: 0...24)
                 typographySlider("缩进", value: Binding(
                     get: { model.typography.firstLineIndentChars },
                     set: { model.typography.firstLineIndentChars = $0; model.schedulePaginate() }

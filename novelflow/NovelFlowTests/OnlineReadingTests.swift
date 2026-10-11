@@ -135,6 +135,33 @@ final class OnlineReadingTests: XCTestCase {
         }
     }
 
+    // MARK: - 章节文本规范化(段距修复)
+
+    func testNormalizedChapterTextCollapsesBlankLines() {
+        XCTAssertEqual(
+            ReaderModel.normalizedChapterText("第一段。\n\n第二段。\n\n\n第三段。"),
+            "第一段。\n第二段。\n第三段。"
+        )
+        XCTAssertEqual(
+            ReaderModel.normalizedChapterText("第一段。\n  \n第二段。"),
+            "第一段。\n第二段。",
+            "空白行(含空格)也必须折叠"
+        )
+        XCTAssertEqual(ReaderModel.normalizedChapterText("单行无换行"), "单行无换行")
+    }
+
+    func testComposeChapterTextPrependsTitle() {
+        XCTAssertEqual(
+            ReaderModel.composeChapterText(title: "第1章 空屋", body: "正文第一段。\n\n正文第二段。"),
+            "第1章 空屋\n正文第一段。\n正文第二段。"
+        )
+        XCTAssertEqual(
+            ReaderModel.composeChapterText(title: "  ", body: "只有正文。"),
+            "只有正文。",
+            "空标题不产生空行"
+        )
+    }
+
     // MARK: - 工具
 
     private func makeContainer() throws -> ModelContainer {
