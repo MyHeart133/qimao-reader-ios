@@ -98,15 +98,15 @@ final class WebSourceTests: XCTestCase {
     func testFanqieResolveReference() {
         XCTAssertEqual(
             FanqieSource.resolveReference(from: "https://fanqienovel.com/page/7143038691944959011"),
-            .book("7143038691944959011")
+            FanqieReference.book("7143038691944959011")
         )
         XCTAssertEqual(
             FanqieSource.resolveReference(from: "https://fanqienovel.com/reader/7567314951392461374"),
-            .chapter("7567314951392461374")
+            FanqieReference.chapter("7567314951392461374")
         )
         XCTAssertEqual(
             FanqieSource.resolveReference(from: "7143038691944959011"),
-            .book("7143038691944959011")
+            FanqieReference.book("7143038691944959011")
         )
         XCTAssertNil(FanqieSource.resolveReference(from: "hello"))
         XCTAssertNil(FanqieSource.resolveReference(from: ""))
@@ -264,22 +264,22 @@ final class WebSourceTests: XCTestCase {
     func testWebLinkResolver() {
         XCTAssertEqual(
             WebLinkResolver.resolve("https://fanqienovel.com/page/7143038691944959011"),
-            .fanqieBook("7143038691944959011")
+            WebLinkResolver.Resolved.fanqieBook("7143038691944959011")
         )
         XCTAssertEqual(
             WebLinkResolver.resolve("https://fanqienovel.com/reader/7567314951392461374"),
-            .fanqieChapter("7567314951392461374")
+            WebLinkResolver.Resolved.fanqieChapter("7567314951392461374")
         )
         XCTAssertEqual(
             WebLinkResolver.resolve("https://m.qidian.com/book/1209977/"),
-            .qidianBook("1209977")
+            WebLinkResolver.Resolved.qidianBook("1209977")
         )
         XCTAssertEqual(
             WebLinkResolver.resolve("https://m.qidian.com/chapter/1209977/23183869/"),
-            .qidianBook("1209977")
+            WebLinkResolver.Resolved.qidianBook("1209977")
         )
-        XCTAssertEqual(WebLinkResolver.resolve("1209977"), .qidianBook("1209977"))
-        XCTAssertEqual(WebLinkResolver.resolve("7567314951392461374"), .fanqieBook("7567314951392461374"))
+        XCTAssertEqual(WebLinkResolver.resolve("1209977"), WebLinkResolver.Resolved.qidianBook("1209977"))
+        XCTAssertEqual(WebLinkResolver.resolve("7567314951392461374"), WebLinkResolver.Resolved.fanqieBook("7567314951392461374"))
         XCTAssertNil(WebLinkResolver.resolve("随便一段文字"))
     }
 

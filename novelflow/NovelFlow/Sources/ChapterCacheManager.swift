@@ -367,7 +367,7 @@ final class ChapterCacheManager: ObservableObject {
     // MARK: - 组装(可测)
 
     /// 章节标题规范化:保证组装文本能被 ChapterParser 正确切章
-    static func normalizedHeading(index: Int, title: String) -> String {
+    nonisolated static func normalizedHeading(index: Int, title: String) -> String {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.isEmpty { return "第\(index + 1)章" }
         let patterns = [
@@ -382,7 +382,7 @@ final class ChapterCacheManager: ObservableObject {
     }
 
     /// 读取分章文件并按顺序拼装全文
-    static func assembleText(meta: Meta, directory: URL) -> (String, Int) {
+    nonisolated static func assembleText(meta: Meta, directory: URL) -> (String, Int) {
         var parts: [String] = []
         var written = 0
         for (i, ch) in meta.chapters.enumerated() {
@@ -400,7 +400,7 @@ final class ChapterCacheManager: ObservableObject {
         return (parts.joined(separator: "\n\n"), written)
     }
 
-    static func introText(meta: Meta, written: Int) -> String {
+    nonisolated static func introText(meta: Meta, written: Int) -> String {
         var intro = meta.summary ?? ""
         if let locked = meta.progress.lockedAt {
             intro += (intro.isEmpty ? "" : "\n\n")
@@ -416,7 +416,7 @@ final class ChapterCacheManager: ObservableObject {
         return intro
     }
 
-    private static func completionNote(meta: Meta, written: Int) -> String {
+    private nonisolated static func completionNote(meta: Meta, written: Int) -> String {
         if let locked = meta.progress.lockedAt {
             return "已缓存前 \(locked) 章;第 \(locked + 1) 章起需在来源站订阅"
         }
