@@ -7,6 +7,9 @@ final class SourceRegistry {
     private(set) var sources: [ContentSource] = []
 
     private init() {
+        register(QimaoSource())
+        register(FanqieSource())
+        register(QidianSource())
         register(GutendexSource())
         register(OpenLibrarySource())
         register(WebnovelSource())

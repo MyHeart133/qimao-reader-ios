@@ -21,6 +21,12 @@ struct SourceCapabilities: Equatable, Codable {
         search: true, metadata: true, onlineReading: false, fullDownload: true,
         requiresAccount: false, allowsOffline: true, allowsExport: true
     )
+
+    /// 网络小说书源(七猫/起点等):搜索 + 逐章阅读 + 整本缓存
+    static let webNovel = SourceCapabilities(
+        search: true, metadata: true, onlineReading: true, fullDownload: true,
+        requiresAccount: false, allowsOffline: true, allowsExport: true
+    )
 }
 
 /// 统一书籍模型(跨来源)
@@ -48,6 +54,8 @@ struct SourceChapter: Identifiable, Equatable {
     var id: String
     var index: Int
     var title: String
+    /// 来源站是否可直接读取(如起点目录中的「免费」标记)
+    var isFree: Bool = true
 }
 
 enum SourceError: LocalizedError {

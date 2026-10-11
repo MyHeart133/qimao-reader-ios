@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 书库:开放来源搜索(Gutenberg 等)+ 本地导入 + 下载中心入口
+/// 书库:全网书源搜索(七猫/起点/番茄等)+ 本地导入 + 下载中心入口
 struct DiscoverView: View {
     @Environment(\.modelContext) private var context
     @ObservedObject private var downloadManager = DownloadManager.shared
@@ -14,6 +14,8 @@ struct DiscoverView: View {
     @State private var showImporter = false
     @State private var importNote: String?
     @State private var sheetRoute: SheetRoute?
+    @State private var showLinkPrompt = false
+    @State private var linkInput = ""
 
     private enum SheetRoute: Identifiable {
         case detail(SourceBook)
@@ -69,6 +71,15 @@ struct DiscoverView: View {
                 DownloadsView()
             }
         }
+        .alert("打开链接 / ID", isPresented: $showLinkPrompt) {
+            TextField("粘贴番茄或起点的分享链接 / 书籍 ID", text: $linkInput)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("打开") { openLink() }
+            Button("取消", role: .cancel) { linkInput = "" }
+        } message: {
+            Text("支持 fanqienovel.com 与 m.qidian.com 的书籍/章节链接,或直接输入书籍 ID。")
+        }
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: importTypes,
@@ -86,7 +97,7 @@ struct DiscoverView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 14))
                     .foregroundStyle(NFTheme.textSecondary)
-                TextField("搜索多来源书库(书名 / 作者)", text: $query)
+                TextField("搜索全网书源(书名 / 作者)", text: $query)
                     .font(.system(size: 15))
                     .submitLabel(.search)
                     .onSubmit { doSearch() }
@@ -104,6 +115,17 @@ struct DiscoverView: View {
             .padding(.vertical, 9)
             .background(Color.white)
             .cornerRadius(19)
+
+            Button {
+                showLinkPrompt = true
+            } label: {
+                Image(systemName: "link")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(NFTheme.accent)
+                    .frame(width: 34, height: 34)
+                    .background(NFTheme.accentSoft)
+                    .clipShape(Circle())
+            }
 
             Button {
                 showImporter = true
@@ -163,13 +185,17 @@ struct DiscoverView: View {
         } else if results.isEmpty {
             VStack(spacing: 10) {
                 Text("未找到相关书籍").font(.system(size: 14)).foregroundStyle(NFTheme.textSecondary)
-                Text("已检索:Gutenberg / Open Library / Webnovel(阅文官方)")
+                Text("已检索:\(searchableSourceNames)")
                     .font(.system(size: 12))
                     .foregroundStyle(NFTheme.textSecondary.opacity(0.8))
+                    .multilineTextAlignment(.center)
                 Button("浏览中文公版馆藏(400+ 本)") { browseChinese() }
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(NFTheme.accent)
                     .padding(.top, 2)
+                Button("看番茄热榜") { browseFanqieRank() }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(NFTheme.accent)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 80)
@@ -189,6 +215,10 @@ struct DiscoverView: View {
                 .padding(14)
             }
         }
+    }
+
+    private var searchableSourceNames: String {
+        SourceRegistry.shared.searchableSources.map(\.displayName).joined(separator: " / ")
     }
 
     private var emptyState: some View {
@@ -220,13 +250,37 @@ struct DiscoverView: View {
                 .cornerRadius(12)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("开放书库", systemImage: "globe.asia.australia")
+                    Label("全网书源", systemImage: "globe.asia.australia")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(NFTheme.textPrimary)
-                    Text("接入三个来源:Project Gutenberg(7 万+ 公版书)、Open Library(全球书目)、Webnovel(阅文官方英译,如 Reverend Insanity)。")
+                    Text("中文网络小说:七猫免费小说、起点中文网可搜可缓存;番茄小说支持热榜浏览与链接直达。另接入 Gutenberg / Open Library / Webnovel(阅文官方英译)。")
                         .font(.system(size: 13))
                         .foregroundStyle(NFTheme.textSecondary)
                         .lineSpacing(3)
+                    HStack(spacing: 10) {
+                        Button {
+                            browseFanqieRank()
+                        } label: {
+                            Text("看番茄热榜")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .background(NFTheme.accent)
+                                .cornerRadius(9)
+                        }
+                        Button {
+                            showLinkPrompt = true
+                        } label: {
+                            Text("链接打开…")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(NFTheme.accent)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .background(NFTheme.accentSoft)
+                                .cornerRadius(9)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -285,11 +339,11 @@ struct DiscoverView: View {
                     try LibraryService.addImported(imported, sourceID: "local-import", context: context)
                     importNote = "已导入《\(imported.title)》到书架"
                 } catch {
-                    importNote = "导入失败：\(error.localizedDescription)"
+                    importNote = "导入失败:\(error.localizedDescription)"
                 }
             }
         case .failure(let error):
-            importNote = "导入失败：\(error.localizedDescription)"
+            importNote = "导入失败:\(error.localizedDescription)"
         }
     }
 
@@ -303,7 +357,58 @@ struct DiscoverView: View {
                 let books = try await GutendexSource().browseChinese()
                 results = books
             } catch {
-                errorText = "加载失败：\(error.localizedDescription)"
+                errorText = "加载失败:\(error.localizedDescription)"
+                results = []
+            }
+            searching = false
+        }
+    }
+
+    private func browseFanqieRank() {
+        guard !searching else { return }
+        searching = true
+        errorText = nil
+        searched = true
+        Task {
+            do {
+                let books = try await FanqieSource().topRank(limit: 30)
+                results = books
+            } catch {
+                errorText = "加载失败:\(error.localizedDescription)"
+                results = []
+            }
+            searching = false
+        }
+    }
+
+    /// 链接 / ID 直达(番茄、起点)
+    private func openLink() {
+        let input = linkInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        linkInput = ""
+        guard let resolved = WebLinkResolver.resolve(input) else {
+            importNote = "无法识别链接或 ID(支持番茄 / 起点)"
+            return
+        }
+        guard !searching else { return }
+        searching = true
+        errorText = nil
+        searched = true
+        Task {
+            do {
+                let book: SourceBook
+                switch resolved {
+                case .fanqieBook(let id):
+                    book = try await FanqieSource().fetchDetail(id)
+                case .fanqieChapter(let chapterID):
+                    let src = FanqieSource()
+                    let bookID = try await src.resolveBookID(fromChapter: chapterID)
+                    book = try await src.fetchDetail(bookID)
+                case .qidianBook(let id):
+                    book = try await QidianSource().fetchDetail(id)
+                }
+                results = [book]
+            } catch {
+                errorText = "打开失败:\(error.localizedDescription)"
                 results = []
             }
             searching = false

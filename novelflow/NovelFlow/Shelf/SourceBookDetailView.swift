@@ -1,18 +1,31 @@
 import SwiftUI
 
 /// 来源书籍详情:能力真实的操作入口(没有下载能力就不显示下载按钮)
+///
+/// 两类书源:
+/// - 直链文件来源(Gutenberg 等):「下载并加入书架」
+/// - 逐章书源(七猫/番茄/起点):「缓存全本并加入书架」(逐章抓取,可断点续传)
 struct SourceBookDetailView: View {
     let book: SourceBook
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var downloadManager = DownloadManager.shared
+    @ObservedObject private var cacheManager = ChapterCacheManager.shared
 
     private var task: DownloadTask? {
         downloadManager.task(id: book.id)
     }
 
+    private var source: ContentSource? {
+        SourceRegistry.shared.source(withID: book.sourceID)
+    }
+
     private var sourceDisplayName: String {
-        SourceRegistry.shared.source(withID: book.sourceID)?.displayName ?? book.sourceID
+        source?.displayName ?? book.sourceID
+    }
+
+    private var supportsChapterCache: Bool {
+        book.downloadURL == nil && (source?.capabilities.onlineReading ?? false)
     }
 
     var body: some View {
@@ -100,52 +113,16 @@ struct SourceBookDetailView: View {
     private var actionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if book.downloadURL != nil {
-                Button {
-                    downloadManager.enqueue(book)
-                } label: {
-                    HStack {
-                        Image(systemName: "arrow.down.circle.fill")
-                        Text(buttonTitle)
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(buttonColor)
-                    .cornerRadius(12)
-                }
-                .disabled(task?.state.isActive == true || task?.state == .completed)
+                fileDownloadBlock
+            } else if supportsChapterCache {
+                chapterCacheBlock
             } else {
                 Text("该来源未提供直接下载地址")
                     .font(.system(size: 13))
                     .foregroundStyle(NFTheme.textSecondary)
             }
 
-            if let t = task {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(t.state.displayName + (t.state == .completed ? " ✅ 已加入书架" : ""))
-                            .font(.system(size: 13))
-                            .foregroundStyle(NFTheme.textPrimary)
-                        Spacer()
-                        if !t.progressText.isEmpty {
-                            Text(t.progressText)
-                                .font(.system(size: 12).monospacedDigit())
-                                .foregroundStyle(NFTheme.textSecondary)
-                        }
-                    }
-                    if t.state == .downloading || t.state == .paused {
-                        ProgressView(value: t.progress)
-                            .tint(NFTheme.accent)
-                    }
-                    if let e = t.error, !e.isEmpty {
-                        Text(e).font(.system(size: 12)).foregroundStyle(.red)
-                    }
-                }
-                .padding(10)
-                .background(Color.white)
-                .cornerRadius(8)
-            }
+            switchSourceBlock
 
             if let ext = book.externalURL, let url = URL(string: ext) {
                 Link(destination: url) {
@@ -159,6 +136,158 @@ struct SourceBookDetailView: View {
             }
         }
     }
+
+    // MARK: 直链文件下载(Gutenberg 等)
+
+    @ViewBuilder
+    private var fileDownloadBlock: some View {
+        Button {
+            downloadManager.enqueue(book)
+        } label: {
+            HStack {
+                Image(systemName: "arrow.down.circle.fill")
+                Text(buttonTitle)
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(buttonColor)
+            .cornerRadius(12)
+        }
+        .disabled(task?.state.isActive == true || task?.state == .completed)
+
+        if let t = task {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(t.state.displayName + (t.state == .completed ? " ✅ 已加入书架" : ""))
+                        .font(.system(size: 13))
+                        .foregroundStyle(NFTheme.textPrimary)
+                    Spacer()
+                    if !t.progressText.isEmpty {
+                        Text(t.progressText)
+                            .font(.system(size: 12).monospacedDigit())
+                            .foregroundStyle(NFTheme.textSecondary)
+                    }
+                }
+                if t.state == .downloading || t.state == .paused {
+                    ProgressView(value: t.progress)
+                        .tint(NFTheme.accent)
+                }
+                if let e = t.error, !e.isEmpty {
+                    Text(e).font(.system(size: 12)).foregroundStyle(.red)
+                }
+            }
+            .padding(10)
+            .background(Color.white)
+            .cornerRadius(8)
+        }
+    }
+
+    // MARK: 逐章缓存(七猫/番茄/起点)
+
+    @ViewBuilder
+    private var chapterCacheBlock: some View {
+        let st = cacheManager.state(for: book)
+
+        VStack(alignment: .leading, spacing: 10) {
+            if let st {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(st.statusText)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(NFTheme.textPrimary)
+                        Spacer()
+                        if st.state == .downloading || st.state == .queued {
+                            ProgressView(value: st.fraction)
+                                .tint(NFTheme.accent)
+                                .frame(width: 110)
+                        }
+                    }
+                    if let msg = st.message, !msg.isEmpty, st.state != .downloading {
+                        Text(msg)
+                            .font(.system(size: 12))
+                            .foregroundStyle(st.state == .failed ? .red : NFTheme.textSecondary)
+                    }
+
+                    HStack(spacing: 10) {
+                        switch st.state {
+                        case .downloading, .queued:
+                            smallButton("暂停", "pause.circle") { cacheManager.pause(book) }
+                            smallButton("取消", "xmark.circle") { cacheManager.cancel(book) }
+                        case .paused:
+                            smallButton("继续缓存", "play.circle") { cacheManager.resume(book) }
+                            smallButton("取消", "xmark.circle") { cacheManager.cancel(book) }
+                        case .failed:
+                            smallButton("重试", "arrow.clockwise.circle") { cacheManager.enqueue(book) }
+                            smallButton("取消", "xmark.circle") { cacheManager.cancel(book) }
+                        case .completed:
+                            Label("已加入书架", systemImage: "checkmark.circle.fill")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(NFTheme.accent)
+                            smallButton("检查更新", "arrow.clockwise.circle") { cacheManager.enqueue(book) }
+                        case .cancelled:
+                            smallButton("重新缓存", "arrow.clockwise.circle") { cacheManager.enqueue(book) }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.white)
+                .cornerRadius(8)
+            } else {
+                Button {
+                    cacheManager.enqueue(book)
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill")
+                        Text("缓存全本并加入书架")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(NFTheme.accent)
+                    .cornerRadius(12)
+                }
+                Text("逐章抓取并缓存到本机,可离线阅读;大长篇需要几分钟,支持暂停与续传。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(NFTheme.textSecondary)
+            }
+        }
+    }
+
+    private func smallButton(_ title: String, _ icon: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(NFTheme.accent)
+        }
+    }
+
+    // MARK: 换源
+
+    @ViewBuilder
+    private var switchSourceBlock: some View {
+        NavigationLink {
+            SourceSwitchView(book: book)
+        } label: {
+            HStack {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                Text("换源 · 在其它书源中查找本书")
+                    .font(.system(size: 14, weight: .medium))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(NFTheme.textSecondary)
+            }
+            .foregroundStyle(NFTheme.accent)
+            .padding(12)
+            .background(NFTheme.accentSoft)
+            .cornerRadius(10)
+        }
+    }
+
+    // MARK: 文案
 
     private var buttonTitle: String {
         guard let t = task else {

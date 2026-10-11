@@ -36,6 +36,12 @@ struct SourceBookCard: View {
                         .lineLimit(2)
                 }
                 HStack(spacing: 6) {
+                    if let src = SourceRegistry.shared.source(withID: book.sourceID) {
+                        chip(src.displayName)
+                        if book.downloadURL == nil && src.capabilities.onlineReading {
+                            chip("可缓存全本")
+                        }
+                    }
                     if let lang = book.language {
                         chip(lang.uppercased())
                     }

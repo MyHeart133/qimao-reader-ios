@@ -1,0 +1,59 @@
+# NovelFlow
+
+安静、耐用的 iOS 小说阅读器(SwiftUI + SwiftData,最低 iOS 17)。
+本目录为 app 源码,通过仓库根目录的 GitHub Actions 工作流 `NovelFlow CI` 云端构建与测试。
+
+## 书源(P6:全网书源)
+
+| 来源 | 搜索 | 详情 | 目录 | 正文 | 整本缓存 | 说明 |
+|---|---|---|---|---|---|---|
+| 七猫免费小说 | ✅ | ✅ | ✅ | ✅ | ✅ | 公开接口 + 参数签名 + AES-128-CBC 正文解密 |
+| 起点中文网 | ✅ | ✅ | ✅ | 免费章 | ✅(至 VIP 界) | m.qidian.com 移动页;VIP 章节不破解,如实截断 |
+| 番茄小说 | — | ✅ | ✅ | ✅ | ✅ | 热榜浏览 / 链接直达;正文 PUA 混淆由内置字表还原 |
+| Gutenberg | ✅ | ✅ | — | — | 直链下载 | 公版书库(含 400+ 中文经典) |
+| Open Library | ✅ | ✅ | — | — | — | 全球书目(发现型) |
+| Webnovel(阅文官方) | ✅ | ✅ | — | — | — | 官方英译版(发现型) |
+
+### 使用入口
+
+- **书库页搜索**:并发检索全部可搜索来源,结果标注来源;点卡片进详情。
+- **缓存全本**:逐章抓取 → 分章落盘(断点续传)→ 组装全文 → 入书架,之后与本地书籍走同一阅读管线(分页/滚动/书签/全文搜索)。
+- **换源**:书籍详情 → 「换源 · 在其它书源中查找本书」,按书名跨源匹配(同作者优先)。
+- **番茄热榜 / 链接直达**:书库页「看番茄热榜」「链接打开…」(支持 fanqienovel.com / m.qidian.com 链接与裸 ID)。
+
+## 架构速览
+
+```
+novelflow/NovelFlow/
+├── Sources/
+│   ├── ContentSource.swift       # 统一书源协议 + 能力声明
+│   ├── SourceRegistry.swift      # 注册表 + 多源并发聚合搜索
+│   ├── QimaoSource.swift         # 七猫(签名 + AES 正文解密)
+│   ├── FanqieSource.swift        # 番茄(热榜/详情/目录/正文)
+│   ├── QidianSource.swift        # 起点(搜索/详情/目录/免费章)
+│   ├── FanqieFontMap.swift       # 番茄 PUA 反混淆字表(362 项)
+│   ├── ChapterCacheManager.swift # 逐章缓存管线(断点续传/组装/入库)
+│   └── WebSourceSupport.swift    # HTTP/SSR 状态提取/HTML 清理/正则工具
+├── Reader/                       # 分页引擎 / 滚动阅读 / 书签 / 全文搜索
+├── Downloads/                    # 直链文件下载(断点续传)
+└── Shelf/                        # 书架 / 书库 / 详情 / 换源
+```
+
+## 维护备忘
+
+- **番茄字表**:`FanqieFontMap` 由「当前字体 cmap × 思源黑体 SourceHanSansSC-Normal v2.002
+  GID→字符」逐字形比对生成。若番茄更换字体(阅读页里 `awesome-font/c/<hash>` 变化),
+  未覆盖的 PUA 字符会原样保留(少量缺字),需重新生成字表。
+- **七猫签名/AES**:常量集中在 `QimaoSource` 顶部;正文解密为 AES-128-CBC,
+  密钥为 16 位 ASCII 口令,IV 为每条密文前 16 字节。
+- **起点 VIP**:章节页 `<main class="... lock-mask">` 即锁定,缓存时在此截断并注明。
+- **测试**:`NovelFlowTests/WebSourceTests.swift` 覆盖签名向量、AES 样本、字表还原、
+  三类来源的页面解析与锁定检测(全部离线,不依赖网络)。
+
+## 构建
+
+推送到 GitHub 后由 Actions 自动构建:
+
+1. `xcodegen generate`(工程由 `project.yml` 生成)
+2. `xcodebuild ... test`(模拟器)
+3. Release 未签名 IPA → 构建产物 `novelflow-unsigned-ipa`
