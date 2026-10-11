@@ -3,16 +3,24 @@
 安静、耐用的 iOS 小说阅读器(SwiftUI + SwiftData,最低 iOS 17)。
 本目录为 app 源码,通过仓库根目录的 GitHub Actions 工作流 `NovelFlow CI` 云端构建与测试。
 
-## 书源(P6:全网书源)
+## 书源(P7:聚合书源)
 
 | 来源 | 搜索 | 详情 | 目录 | 正文 | 整本缓存 | 说明 |
 |---|---|---|---|---|---|---|
 | 七猫免费小说 | ✅ | ✅ | ✅ | ✅ | ✅ | 公开接口 + 参数签名 + AES-128-CBC 正文解密 |
 | 起点中文网 | ✅ | ✅ | ✅ | 免费章 | ✅(至 VIP 界) | m.qidian.com 移动页;VIP 章节不破解,如实截断 |
 | 番茄小说 | — | ✅ | ✅ | ✅ | ✅ | 热榜浏览 / 链接直达;正文 PUA 混淆由内置字表还原 |
+| 202小说网 | ✅ | ✅ | ✅ | ✅ | ✅ | 聚合镜像(202 模板);目录分页自动翻页 |
+| 非凡中文 | ✅ | ✅ | ✅ | ✅ | ✅ | 聚合镜像(202 模板,独立书库) |
+| 新笔趣阁 | ✅ | ✅ | ✅ | ✅ | ✅ | 聚合镜像(202 模板,独立书库) |
+| 飘天文学 | ✅ | ✅ | ✅ | ✅ | ✅ | 老牌站;GBK 编码(搜索参数按 GB18030 转义) |
+| 笔趣阁(365) | ✅ | ✅ | ✅ | ✅ | ✅ | 独立书库,`/chapter/` 直链 |
 | Gutenberg | ✅ | ✅ | — | — | 直链下载 | 公版书库(含 400+ 中文经典) |
 | Open Library | ✅ | ✅ | — | — | — | 全球书目(发现型) |
 | Webnovel(阅文官方) | ✅ | ✅ | — | — | — | 官方英译版(发现型) |
+
+> 冷门书 / 老书 / 下架书(如《蛊真人》)通过聚合镜像站可以搜到并缓存全本;
+> 起点 VIP 章节本身不做破解 —— 对应全本一般能在聚合镜像中找到。
 
 ### 使用入口
 
@@ -31,9 +39,12 @@ novelflow/NovelFlow/
 │   ├── QimaoSource.swift         # 七猫(签名 + AES 正文解密)
 │   ├── FanqieSource.swift        # 番茄(热榜/详情/目录/正文)
 │   ├── QidianSource.swift        # 起点(搜索/详情/目录/免费章)
+│   ├── Template202Source.swift   # 202 模板聚合镜像(202xs/非凡中文/新笔趣阁)
+│   ├── PiaotiaSource.swift       # 飘天文学(GBK)
+│   ├── Biquge365Source.swift     # 笔趣阁(365 模板)
 │   ├── FanqieFontMap.swift       # 番茄 PUA 反混淆字表(362 项)
 │   ├── ChapterCacheManager.swift # 逐章缓存管线(断点续传/组装/入库)
-│   └── WebSourceSupport.swift    # HTTP/SSR 状态提取/HTML 清理/正则工具
+│   └── WebSourceSupport.swift    # HTTP/SSR 状态提取/HTML 清理/正则/编码工具
 ├── Reader/                       # 分页引擎 / 滚动阅读 / 书签 / 全文搜索
 ├── Downloads/                    # 直链文件下载(断点续传)
 └── Shelf/                        # 书架 / 书库 / 详情 / 换源

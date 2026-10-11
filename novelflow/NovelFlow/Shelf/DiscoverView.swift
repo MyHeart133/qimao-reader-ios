@@ -253,7 +253,7 @@ struct DiscoverView: View {
                     Label("全网书源", systemImage: "globe.asia.australia")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(NFTheme.textPrimary)
-                    Text("中文网络小说:七猫免费小说、起点中文网可搜可缓存;番茄小说支持热榜浏览与链接直达。另接入 Gutenberg / Open Library / Webnovel(阅文官方英译)。")
+                    Text("中文网络小说:七猫 / 起点 / 番茄 + 多个聚合书源(202小说网 / 非凡中文 / 新笔趣阁 / 飘天文学 / 笔趣阁365),冷门书、老书、下架书都能搜到;另接入 Gutenberg / Open Library / Webnovel。")
                         .font(.system(size: 13))
                         .foregroundStyle(NFTheme.textSecondary)
                         .lineSpacing(3)

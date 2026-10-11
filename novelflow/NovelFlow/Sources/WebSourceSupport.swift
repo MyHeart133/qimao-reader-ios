@@ -8,6 +8,17 @@ enum WebSourceSupport {
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
+    /// 桌面浏览器 UA(部分聚合站对移动 UA 返回不同模板)
+    static let desktopBrowserUA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+
+    /// 页面编码
+    enum TextEncoding {
+        case utf8
+        case gb18030
+    }
+
     static func session(timeout: TimeInterval = 20) -> URLSession {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = timeout
@@ -21,9 +32,18 @@ enum WebSourceSupport {
     static func fetchData(
         _ url: URL,
         session: URLSession,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        method: String = "GET",
+        form: [String: String]? = nil
     ) async throws -> Data {
         var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let form {
+            var comps = URLComponents()
+            comps.queryItems = form.map { URLQueryItem(name: $0.key, value: $0.value) }
+            request.httpBody = comps.percentEncodedQuery?.data(using: .utf8)
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        }
         for (k, v) in headers {
             request.setValue(v, forHTTPHeaderField: k)
         }
@@ -43,12 +63,15 @@ enum WebSourceSupport {
     static func fetchHTML(
         _ url: URL,
         session: URLSession,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        method: String = "GET",
+        form: [String: String]? = nil,
+        encoding: TextEncoding = .utf8
     ) async throws -> String {
         var all = headers
         all["User-Agent"] = all["User-Agent"] ?? mobileBrowserUA
-        let data = try await fetchData(url, session: session, headers: all)
-        return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        let data = try await fetchData(url, session: session, headers: all, method: method, form: form)
+        return decode(data, encoding: encoding)
     }
 
     static func fetchJSON(
@@ -63,6 +86,32 @@ enum WebSourceSupport {
             throw SourceError.decode("响应不是有效 JSON")
         }
         return obj
+    }
+
+    // MARK: - 编码
+
+    static func decode(_ data: Data, encoding: TextEncoding) -> String {
+        switch encoding {
+        case .utf8:
+            return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        case .gb18030:
+            let cfEncoding = CFStringConvertEncodingToNSStringEncoding(
+                CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+            )
+            if let s = NSString(data: data, encoding: cfEncoding) {
+                return s as String
+            }
+            return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        }
+    }
+
+    /// 把关键词按 GB18030 编码后做百分号转义(GBK 站点的搜索参数要求)
+    static func percentEncodedGBK(_ s: String) -> String? {
+        let cfEncoding = CFStringConvertEncodingToNSStringEncoding(
+            CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+        )
+        guard let data = s.data(using: String.Encoding(rawValue: cfEncoding)) else { return nil }
+        return data.map { String(format: "%%%02X", $0) }.joined()
     }
 
     // MARK: - 内嵌 JSON 状态(SSR)
@@ -135,6 +184,33 @@ enum WebSourceSupport {
         s = EPUBParser.decodeEntities(s)
         s = s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - 元数据 / URL
+
+    /// 读取 `<meta property="..."|name="...">` 的 content
+    static func metaContent(_ html: String, property: String) -> String? {
+        let escaped = NSRegularExpression.escapedPattern(for: property)
+        if let v = firstCapture(pattern: "<meta[^>]+property=\"\(escaped)\"[^>]+content=\"([^\"]*)\"", in: html) {
+            return EPUBParser.decodeEntities(v)
+        }
+        if let v = firstCapture(pattern: "<meta[^>]+content=\"([^\"]*)\"[^>]+property=\"\(escaped)\"", in: html) {
+            return EPUBParser.decodeEntities(v)
+        }
+        if let v = firstCapture(pattern: "<meta[^>]+name=\"\(escaped)\"[^>]+content=\"([^\"]*)\"", in: html) {
+            return EPUBParser.decodeEntities(v)
+        }
+        return nil
+    }
+
+    /// 相对路径补全为绝对 URL
+    static func absoluteURL(_ value: String, base: String) -> String? {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !v.isEmpty else { return nil }
+        if v.hasPrefix("http://") || v.hasPrefix("https://") { return v }
+        if v.hasPrefix("//") { return "https:" + v }
+        if v.hasPrefix("/") { return base + v }
+        return base + "/" + v
     }
 
     /// 去除字符串中的所有空白(用于书名比对)

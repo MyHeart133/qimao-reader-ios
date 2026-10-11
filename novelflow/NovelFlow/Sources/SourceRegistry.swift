@@ -10,6 +10,12 @@ final class SourceRegistry {
         register(QimaoSource())
         register(FanqieSource())
         register(QidianSource())
+        // 聚合镜像(202 模板家族 + 飘天文学 + 笔趣阁 365)
+        for mirror in Template202Source.mirrors {
+            register(mirror)
+        }
+        register(PiaotiaSource())
+        register(Biquge365Source())
         register(GutendexSource())
         register(OpenLibrarySource())
         register(WebnovelSource())

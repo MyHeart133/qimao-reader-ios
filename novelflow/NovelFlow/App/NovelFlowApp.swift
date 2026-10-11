@@ -62,15 +62,15 @@ struct AboutView: View {
                 .padding(.vertical, 4)
             }
             Section("当前版本状态") {
-                LabeledContent("版本", value: "0.3.0(P6:全网书源)")
+                LabeledContent("版本", value: "0.4.0(P7:聚合书源)")
                 LabeledContent("阅读引擎", value: "分页 / 滚动双模式 · 锚点恢复")
                 LabeledContent("阅读工具", value: "书签 / 全文搜索 / 点按分区")
                 LabeledContent("本地导入", value: "TXT / EPUB 已接通")
-                LabeledContent("全网书源", value: "七猫 / 番茄 / 起点 + 开放书库")
+                LabeledContent("书源", value: "七猫 / 起点 / 番茄 + 聚合镜像 ×5")
                 LabeledContent("整本缓存", value: "逐章抓取 / 断点续传 / 离线阅读")
             }
             Section("来源与许可") {
-                Text("开放书库内容依据 Project Gutenberg 许可提供。中文书源(七猫 / 番茄 / 起点)通过其公开网页与公开接口获取书籍信息与章节内容,仅供个人阅读使用;如内容涉及订阅章节,请前往来源 App 支持作者。本地文件仅在设备上处理。")
+                Text("开放书库内容依据 Project Gutenberg 许可提供。中文书源(七猫 / 起点 / 番茄及聚合镜像站)通过其公开页面获取书籍信息与章节内容,仅供个人阅读使用;如内容涉及订阅章节,请前往来源平台支持作者。本地文件仅在设备上处理。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
